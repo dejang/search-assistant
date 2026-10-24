@@ -1,5 +1,4 @@
 #!/usr/bin / env tsx
-/* oxlint-disable */
 // Flags exported values, members, and parameters in src/ referenced only by tests.
 // Distinguishes LEAKED_PRIVATE_IMPL, TEST_ONLY_ORPHAN, and TEST_ONLY_PARAM.
 
@@ -640,7 +639,7 @@ interface Finding {
 
 const uniqueCandidates = new Set<Candidate>([
   ...candidatesBySymbol.values(),
-  ...[...propertyCandidatesByObjSymbol.values()].flatMap((m) => [...m.values()]),
+  ...[...propertyCandidatesByObjSymbol.values()].flatMap((m) => Array.from(m.values())),
 ]);
 
 const findings: Finding[] = [];
@@ -655,7 +654,7 @@ for (const c of uniqueCandidates) {
       name: c.name,
       sameFileRefs: c.sameFileRefs,
       testRefs: c.testRefs,
-      testFiles: [...c.testFiles].sort(),
+      testFiles: c.testFiles.toSorted(),
     });
     continue;
   }
@@ -678,7 +677,7 @@ for (const c of uniqueCandidates) {
           name: `${c.name}(..., ${p.name})`,
           sameFileRefs: c.sameFileRefs,
           testRefs: c.testRefs,
-          testFiles: [...c.testFiles].sort(),
+          testFiles: c.testFiles.toSorted(),
         });
       }
     }
