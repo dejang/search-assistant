@@ -1,3 +1,5 @@
+pub mod url_extractor;
+
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
