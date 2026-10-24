@@ -21,9 +21,19 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
+# `log::info!` writes nowhere without a logger; this one prints to stdout under
+# `tauri dev` and to the app log directory in a built app.
+tauri-plugin-log = "2"
+log = "0.4"
+# Query values are form-encoded into the search URL, and DuckDuckGo's redirect
+# links are form-decoded back out of it.
+form_urlencoded = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-obscura = { git = "https://github.com/h4ckf0r0day/obscura", features = ["api"] }
+# Pinned to the tag the browser is known to run on. The default branch panics in
+# `deno_core` (`op_initial_frame ... re-entrantly invoked op op_dom`) on any page
+# that runs scripts, which aborts the app.
+obscura = { git = "https://github.com/h4ckf0r0day/obscura", tag = "v0.2.3", features = ["api"] }
 htmd = "0.5"
 regex = "1"
 # `rig-core`'s default `derive` feature pulls the `rig-derive` proc-macro for
@@ -41,9 +51,11 @@ hf-hub = "1"
 # because Cargo unions them with `hf-hub`'s own request.
 reqwest = { version = "0.13", default-features = false }
 thiserror = "2"
-# `time` and `macros` are used by library code (`agent::BuddyAgent::ask_within`);
-# the runtime and IO features are needed solely by the tests below.
-tokio = { version = "1", features = ["time", "macros"] }
+# `time` and `macros` are used by library code (`agent::BuddyAgent::ask_within`)
+# and by the tests below. `rt` and `net` let `url_extractor` drive obscura on a
+# current-thread runtime, the only flavor one isolate tolerates, and `sync` gives
+# it the permits that bound how many run at once.
+tokio = { version = "1", features = ["time", "macros", "rt", "net", "sync"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time"] }

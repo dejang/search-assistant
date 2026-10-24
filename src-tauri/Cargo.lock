@@ -44,15 +44,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aes-kw"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69fa2b352dcefb5f7f3a5fb840e02665d311d878955380515e4fd50095dd3d8c"
-dependencies = [
- "aes",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -74,6 +65,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b5c1865780388bfa186411ab5f247819487fc4864c6e9c3106611fa347586e1"
 dependencies = [
  "alloc-no-stdlib",
+]
+
+[[package]]
+name = "android_log-sys"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84521a3cf562bc62942e294181d9eef17eb38ceb8c68677bc49f144e4c3d4f8d"
+
+[[package]]
+name = "android_logger"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbb4e440d04be07da1f1bf44fb4495ebd58669372fe0cffa6e48595ac5bd88a3"
+dependencies = [
+ "android_log-sys",
+ "env_filter",
+ "log",
 ]
 
 [[package]]
@@ -1599,6 +1607,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_filter"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bf3c259d255ca70051b30e2e95b5446cdb8949ac4cd22c0d7fd634d89f568e2"
+dependencies = [
+ "log",
+ "regex",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1658,6 +1676,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
+]
+
+[[package]]
+name = "fern"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4316185f709b23713e41e3195f90edef7fb00c3ed4adc79769cf09cc762a3b29"
+dependencies = [
+ "log",
 ]
 
 [[package]]
@@ -3506,6 +3533,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_threads"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cabcc654086861f9e1bc5115258de62ef92c79b20f4615a1b0cc57c4e82027d4"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "objc2"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3723,7 +3759,7 @@ dependencies = [
 [[package]]
 name = "obscura"
 version = "0.1.0"
-source = "git+https://github.com/h4ckf0r0day/obscura#09790944a405ba81a7df27bc2577c6b0db283900"
+source = "git+https://github.com/h4ckf0r0day/obscura?tag=v0.2.3#1a3169da276d7720732c7b20535474942917fb83"
 dependencies = [
  "anyhow",
  "obscura-browser",
@@ -3738,7 +3774,7 @@ dependencies = [
 [[package]]
 name = "obscura-browser"
 version = "0.1.0"
-source = "git+https://github.com/h4ckf0r0day/obscura#09790944a405ba81a7df27bc2577c6b0db283900"
+source = "git+https://github.com/h4ckf0r0day/obscura?tag=v0.2.3#1a3169da276d7720732c7b20535474942917fb83"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3746,7 +3782,6 @@ dependencies = [
  "obscura-dom",
  "obscura-js",
  "obscura-net",
- "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
@@ -3757,7 +3792,7 @@ dependencies = [
 [[package]]
 name = "obscura-dom"
 version = "0.1.0"
-source = "git+https://github.com/h4ckf0r0day/obscura#09790944a405ba81a7df27bc2577c6b0db283900"
+source = "git+https://github.com/h4ckf0r0day/obscura?tag=v0.2.3#1a3169da276d7720732c7b20535474942917fb83"
 dependencies = [
  "cssparser 0.34.0",
  "html5ever 0.39.0",
@@ -3772,11 +3807,10 @@ dependencies = [
 [[package]]
 name = "obscura-js"
 version = "0.1.0"
-source = "git+https://github.com/h4ckf0r0day/obscura#09790944a405ba81a7df27bc2577c6b0db283900"
+source = "git+https://github.com/h4ckf0r0day/obscura?tag=v0.2.3#1a3169da276d7720732c7b20535474942917fb83"
 dependencies = [
  "aes",
  "aes-gcm",
- "aes-kw",
  "anyhow",
  "base64 0.22.1",
  "cbc",
@@ -3805,11 +3839,10 @@ dependencies = [
 [[package]]
 name = "obscura-net"
 version = "0.1.0"
-source = "git+https://github.com/h4ckf0r0day/obscura#09790944a405ba81a7df27bc2577c6b0db283900"
+source = "git+https://github.com/h4ckf0r0day/obscura?tag=v0.2.3#1a3169da276d7720732c7b20535474942917fb83"
 dependencies = [
  "async-trait",
  "encoding_rs",
- "obscura-ssrf",
  "psl",
  "reqwest 0.12.28",
  "serde",
@@ -3820,11 +3853,6 @@ dependencies = [
  "tracing",
  "url",
 ]
-
-[[package]]
-name = "obscura-ssrf"
-version = "0.1.0"
-source = "git+https://github.com/h4ckf0r0day/obscura#09790944a405ba81a7df27bc2577c6b0db283900"
 
 [[package]]
 name = "once_cell"
@@ -4687,8 +4715,10 @@ dependencies = [
 name = "research-buddy"
 version = "0.1.0"
 dependencies = [
+ "form_urlencoded",
  "hf-hub",
  "htmd",
+ "log",
  "obscura",
  "regex",
  "reqwest 0.13.5",
@@ -4699,6 +4729,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-global-shortcut",
+ "tauri-plugin-log",
  "tauri-plugin-opener",
  "tempfile",
  "thiserror 2.0.21",
@@ -6008,6 +6039,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-log"
+version = "2.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d83980f6765feb86cf2224959246be28b0488e14a23204a719f7f9deecfc64c9"
+dependencies = [
+ "android_logger",
+ "fern",
+ "log",
+ "objc2",
+ "objc2-foundation",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "swift-rs",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.21",
+ "time",
+]
+
+[[package]]
 name = "tauri-plugin-opener"
 version = "2.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6240,7 +6292,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
 dependencies = [
  "deranged",
+ "libc",
  "num-conv",
+ "num_threads",
  "powerfmt",
  "serde_core",
  "time-core",

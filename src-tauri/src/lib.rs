@@ -7,6 +7,8 @@ pub mod agent;
 pub mod model_store;
 pub mod url_extractor;
 
+use std::sync::Arc;
+
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
@@ -40,6 +42,11 @@ fn hide_window(app: tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -55,13 +62,15 @@ pub fn run() -> Result<(), tauri::Error> {
         .setup(|app| {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             app.global_shortcut().register("alt+shift+space")?;
+            app.manage(Arc::new(url_extractor::UrlExtractor::new(8)));
             ModelStore::start(app.handle(), "Qwen", "Qwen3-8B-GGUF", "Q4_K_M");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             hide_window,
             model_store::model_download,
-            model_store::model_download_status
+            model_store::model_download_status,
+            url_extractor::search_web
         ])
         .run(tauri::generate_context!())
 }

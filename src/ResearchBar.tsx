@@ -18,6 +18,7 @@ const pillStyle: React.CSSProperties = {
 export function ResearchBar() {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [value, setValue] = React.useState('');
+  const [pending, setPending] = React.useState(false);
   const { status, shown, retry } = useModelDownload();
 
   // Nothing can be answered until the model is on disk, so the field is closed
@@ -27,6 +28,31 @@ export function ResearchBar() {
   const handleChange = React.useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value),
     [],
+  );
+
+  // One search at a time: each drives its own headless browser, so a second
+  // Enter while one is running would only queue another browser behind it.
+  const submit = React.useCallback(() => {
+    const query = value.trim();
+    if (query === '' || pending) {
+      return;
+    }
+    setPending(true);
+    invoke('search_web', { query })
+      .catch((error: unknown) => {
+        console.error('search failed', error);
+      })
+      .finally(() => setPending(false));
+  }, [value, pending]);
+
+  const handleKeyDown = React.useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      }
+    },
+    [submit],
   );
 
   // Focus input when the window is shown via global shortcut
@@ -96,6 +122,7 @@ export function ResearchBar() {
             ref={inputRef}
             value={value}
             onChange={handleChange}
+            onKeyDown={handleKeyDown}
             disabled={downloading}
             placeholder="What would you like to research?"
             spellCheck={false}
