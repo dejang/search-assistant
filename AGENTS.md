@@ -1,3 +1,6 @@
+# Avoid
+- over explaining and long prose anywhere be it either code or git comments or readmes. Keep things succint and in a plain, easy to read language.
+
 # Definiton of done
 - `pnpm lint` passes
 - `cargo clippy` and `ast-grep` checks pass
