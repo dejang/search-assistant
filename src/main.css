@@ -305,3 +305,32 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* Indeterminate progress (spec §4): a 35%-wide segment sweeping the track. */
+@keyframes pn-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(290%);
+  }
+}
+
+.pn-progress-indeterminate {
+  animation: pn-indeterminate 1.4s ease-in-out infinite;
+}
+
+/* Progress value change (spec §4.3): 200ms ease on the width. */
+.pn-progress-fill {
+  transition: width 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pn-progress-indeterminate {
+    animation-duration: 4s;
+  }
+
+  .pn-progress-fill {
+    transition: none;
+  }
+}

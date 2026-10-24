@@ -2,6 +2,8 @@ import * as React from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Icon } from './components/ui/icons/Icon';
+import { ModelProgress } from './ModelProgress';
+import { useModelDownload } from './useModelDownload';
 import { TextField } from './components/ui/TextField';
 
 const pillStyle: React.CSSProperties = {
@@ -16,6 +18,11 @@ const pillStyle: React.CSSProperties = {
 export function ResearchBar() {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [value, setValue] = React.useState('');
+  const { status, shown, retry } = useModelDownload();
+
+  // Nothing can be answered until the model is on disk, so the field is closed
+  // for business rather than accepting a question that would go nowhere.
+  const downloading = status?.phase === 'downloading';
 
   const handleChange = React.useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value),
@@ -46,16 +53,21 @@ export function ResearchBar() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // Auto-focus on mount
+  // A disabled field cannot take focus, so this runs again when the download
+  // ends and the question becomes answerable.
   React.useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (!downloading) {
+      inputRef.current?.focus();
+    }
+  }, [downloading]);
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-transparent select-none px-10 py-14">
-      {/* The pill — shadow applied directly here, sized to fit within window padding */}
-      <div
-        className="flex w-full items-center gap-3 rounded-full px-5
+      {/* Positions the model progress row against the pill's bottom edge */}
+      <div className="relative w-full">
+        {/* The pill — shadow applied directly here, sized to fit within window padding */}
+        <div
+          className="flex w-full items-center gap-3 rounded-full px-5
           [&_input]:bg-transparent!
           [&_input]:shadow-none!
           [&_input]:focus:shadow-none!
@@ -70,26 +82,32 @@ export function ResearchBar() {
           [&_input]:text-label
           [&_input]:placeholder:text-label-secondary
         "
-        style={pillStyle}
-      >
-        {/* Search icon */}
-        <Icon
-          name="search"
-          size={22}
-          className="shrink-0 text-label-secondary"
-        />
+          style={pillStyle}
+        >
+          {/* Search icon */}
+          <Icon
+            name="search"
+            size={22}
+            className="shrink-0 text-label-secondary"
+          />
 
-        {/* TextField — styled to blend into the pill via parent descendant overrides */}
-        <TextField
-          ref={inputRef}
-          value={value}
-          onChange={handleChange}
-          placeholder="What would you like to research?"
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="Research query"
-          className="flex-1 min-w-0"
-        />
+          {/* TextField — styled to blend into the pill via parent descendant overrides */}
+          <TextField
+            ref={inputRef}
+            value={value}
+            onChange={handleChange}
+            disabled={downloading}
+            placeholder="What would you like to research?"
+            spellCheck={false}
+            autoComplete="off"
+            aria-label={
+              downloading ? 'Research query, unavailable while the model downloads' : 'Research query'
+            }
+            className="flex-1 min-w-0"
+          />
+        </div>
+
+        <ModelProgress status={status} shown={shown} onRetry={retry} />
       </div>
     </div>
   );

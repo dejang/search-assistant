@@ -32,13 +32,23 @@ regex = "1"
 # `OpenAI::from_env` / `OpenAIConfig::client`).
 rig-core = { version = "0.45", default-features = false, features = ["reqwest", "rustls"] }
 rig-agent = { version = "0.45", default-features = false }
+# `hf-hub` speaks the Hub API (resolve, LFS, xet) so the GGUF download needs no
+# hand-rolled redirect handling; `blocking` stays off because every call site here
+# already runs on Tauri's tokio runtime.
+hf-hub = "1"
+# The version `hf-hub` speaks, so its builder will take the client back: it is
+# how the download gets the timeouts `hf-hub` leaves unset. Features stay off
+# because Cargo unions them with `hf-hub`'s own request.
+reqwest = { version = "0.13", default-features = false }
 thiserror = "2"
-# Only `time` is used by library code (`agent::BuddyAgent::ask_within`); the
-# runtime and IO features are needed solely by the tests below.
-tokio = { version = "1", features = ["time"] }
+# `time` and `macros` are used by library code (`agent::BuddyAgent::ask_within`);
+# the runtime and IO features are needed solely by the tests below.
+tokio = { version = "1", features = ["time", "macros"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time"] }
+# The downloader tests build model folders they can throw away.
+tempfile = "3"
 
 [lints.clippy]
 all = { level = "deny", priority = -2 }

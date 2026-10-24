@@ -1,8 +1,16 @@
+// hf-hub's download future nests `Box::pin` and opaque builders deeply enough
+// that proving it `Send` overflows rustc's default recursion budget. Raising
+// the budget lets that check finish instead of failing the build.
+#![recursion_limit = "512"]
+
 pub mod agent;
+pub mod model_store;
 pub mod url_extractor;
 
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+
+use model_store::ModelStore;
 
 fn toggle_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -47,8 +55,13 @@ pub fn run() -> Result<(), tauri::Error> {
         .setup(|app| {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             app.global_shortcut().register("alt+shift+space")?;
+            ModelStore::start(app.handle(), "Qwen", "Qwen3-8B-GGUF", "Q4_K_M");
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![hide_window])
+        .invoke_handler(tauri::generate_handler![
+            hide_window,
+            model_store::model_download,
+            model_store::model_download_status
+        ])
         .run(tauri::generate_context!())
 }
