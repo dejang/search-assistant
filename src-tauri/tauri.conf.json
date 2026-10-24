@@ -12,9 +12,19 @@
   "app": {
     "windows": [
       {
-        "title": "research-buddy",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Research",
+        "width": 760,
+        "height": 160,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "resizable": false,
+        "center": true,
+        "y": 180,
+        "skipTaskbar": true,
+        "shadow": false
       }
     ],
     "security": {
