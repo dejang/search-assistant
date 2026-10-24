@@ -1,11 +1,13 @@
 id: comment-line-too-long
 language: rust
 severity: error
-message: "Implementation comment text is longer than 96 characters; wrap it or move the reasoning to the module outline (apply-style: Comments and API documentation)."
+message: "Comment text is longer than 96 characters; wrap it or move the reasoning to the module outline (apply-style: Comments and API documentation)."
 # A single line comment can carry unbounded prose, which the line-count rules cannot see.
 # The limit is on the comment text, not the file column: node text excludes indentation,
 # so 96 characters stays inside rustfmt's 100-column width at the usual indent. Doc
-# comments are exempt, as in comment-over-3-lines.
+# comments count too: their three-character marker leaves 94 characters of text.
 rule:
   kind: line_comment
-  regex: '^//[^/!].{94,}'
+  any:
+    - regex: '^//[^/!].{94,}'
+    - regex: '^//[/!].{94,}'

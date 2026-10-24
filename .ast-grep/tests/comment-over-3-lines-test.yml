@@ -8,10 +8,9 @@ valid:
         let _ = 1;
     }
   - |
-    /// Module documentation is exempt from the three-line limit.
+    /// Module documentation is outside the plain three-line limit.
     ///
-    /// It states the API's own guarantees.
-    /// So it may run longer.
+    /// It carries its own limit in doc-comment-over-5-lines.
     fn probe() {}
   - |
     /// A doc comment outside a function body breaks the run: it states a contract.

@@ -1,8 +1,5 @@
-//! Tests for the agent module.
-//!
-//! Unit tests pin the public error contract the UI renders. Endpoint tests
-//! drive a real request against a local HTTP server, so `ask` is covered
-//! without internet access or a provider key.
+//! Tests for the agent module: unit tests pin the error contract the UI renders;
+//! endpoint tests drive a real request against a local HTTP server.
 
 /// The first line of a captured request, for assertion messages. Never dump a
 /// whole request: it carries the `Authorization` header.
@@ -107,14 +104,11 @@ mod endpoint {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
 
-    /// Read a full request: headers to the blank line, then the body the
-    /// request declared. Answering before the body is drained makes the peer
-    /// reset the connection, which surfaces as a transport error and would let
-    /// a status-code assertion pass without a provider reply ever occurring.
-    ///
-    /// Assumes a `Content-Length` body, which is what the client sends; a
-    /// chunked request would be answered early, and the `status()` assertions
-    /// would then fail loudly rather than pass.
+    /// Read a full request: headers to the blank line, then the declared body.
+    /// Answering before the body is drained makes the peer reset, which surfaces
+    /// as a transport error and would let a status assertion pass with no reply.
+    /// Assumes a `Content-Length` body; a chunked request would be answered
+    /// early and the `status()` assertions would then fail loudly.
     async fn read_request(stream: &mut TcpStream) -> String {
         let mut buf: Vec<u8> = Vec::new();
         let mut chunk = [0u8; 1024];

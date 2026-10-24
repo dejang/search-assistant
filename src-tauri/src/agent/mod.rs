@@ -1,10 +1,7 @@
 //! Agent — a minimal LLM agent built on [rig](https://github.com/0xPlaygrounds/rig).
 //!
-//! The agent talks to an OpenAI-compatible provider. [`BuddyAgent::new`] takes
-//! credentials from the environment: `OPENAI_API_KEY`, with an optional
-//! `OPENAI_BASE_URL` override for self-hosted or proxy endpoints. The model
-//! name and preamble are always supplied by the caller, so the agent carries no
-//! built-in behaviour defaults.
+//! Talks to an OpenAI-compatible provider; [`BuddyAgent::new`] reads `OPENAI_API_KEY`
+//! and an optional `OPENAI_BASE_URL`. The caller always supplies model and preamble.
 //!
 //! ```no_run
 //! use research_buddy_lib::agent::BuddyAgent;
@@ -35,15 +32,9 @@ pub enum AgentError {
 
     /// The provider rejected or failed the request.
     ///
-    /// Kept structured so callers can branch on [`AgentError::status`] — a 401
-    /// (open settings) is not a 429 (back off) is not a transport failure
-    /// (offline). Boxed because `PromptError` carries a whole transcript and
-    /// would otherwise dominate every `Result` in the crate.
-    ///
-    /// `Display` forwards the provider's own message, which is what a user needs
-    /// to see, but it can echo provider-supplied text — prefer
-    /// [`AgentError::status`] over matching on the string, and avoid persisting
-    /// this text in logs.
+    /// Branch on [`AgentError::status`]: a 401 (open settings) is not a 429 (back
+    /// off) is not a transport failure (offline). Boxed because `PromptError`
+    /// carries a whole transcript; `Display` can echo provider text, so do not log it.
     #[error("completion failed: {source}")]
     Completion {
         #[source]
@@ -91,11 +82,9 @@ pub struct BuddyAgent {
 }
 
 impl BuddyAgent {
-    /// Build an agent for `model` and `preamble`, reading credentials from the
-    /// environment (`OPENAI_API_KEY`, optional `OPENAI_BASE_URL`).
-    ///
-    /// Note that a packaged macOS app launched from the Dock does not inherit a
-    /// shell environment; prefer [`with_api_key`](Self::with_api_key) or
+    /// Build an agent for `model` and `preamble` from `OPENAI_API_KEY` and the
+    /// optional `OPENAI_BASE_URL`. An app launched from the Dock inherits no shell
+    /// environment, so prefer [`with_api_key`](Self::with_api_key) or
     /// [`with_endpoint`](Self::with_endpoint) when the host supplies the key.
     ///
     /// # Errors
@@ -108,17 +97,10 @@ impl BuddyAgent {
     }
 
     /// Build an agent for `model` and `preamble` with an explicit `api_key`,
-    /// bypassing the environment.
-    ///
-    /// Always targets the default provider host: `OPENAI_BASE_URL` is *not*
-    /// consulted on this path. Use [`with_endpoint`](Self::with_endpoint) for a
-    /// proxy or a self-hosted endpoint.
-    ///
-    /// Builds a provider client (connection pool and trust store), so construct
-    /// one agent and share it — for example via `app.manage` — rather than
-    /// building one per request.
-    ///
-    /// This does not contact the provider, so construction cannot fail.
+    /// bypassing the environment. `OPENAI_BASE_URL` is not consulted here; use
+    /// [`with_endpoint`](Self::with_endpoint) for a proxy or self-hosted host.
+    /// Builds a provider client, so construct one agent and share it; building
+    /// does not contact the provider, so it cannot fail.
     #[must_use]
     pub fn with_api_key(
         api_key: impl Into<Secret>,
@@ -129,13 +111,10 @@ impl BuddyAgent {
     }
 
     /// Build an agent that sends requests to `base_url` with `api_key`, for a
-    /// proxy, a gateway, or a local inference server that speaks the same wire
-    /// format.
+    /// proxy, a gateway, or a local inference server on the same wire format.
     ///
-    /// Builds a provider client (connection pool and trust store), so construct
-    /// one agent and share it rather than building one per request.
-    ///
-    /// This does not contact the provider, so construction cannot fail.
+    /// Builds a provider client, so construct one agent and share it; building
+    /// does not contact the provider, so it cannot fail.
     #[must_use]
     pub fn with_endpoint(
         api_key: impl Into<Secret>,
@@ -165,10 +144,8 @@ impl BuddyAgent {
 
     /// Send `prompt` to the model and return its text reply.
     ///
-    /// There is no deadline: a gateway that accepts the connection and never
-    /// answers leaves this future pending forever. Prefer
-    /// [`ask_within`](Self::ask_within) anywhere a caller cannot tolerate a
-    /// hang, such as a `#[tauri::command]` feeding a frontend promise.
+    /// No deadline: a gateway that accepts but never answers leaves this future
+    /// pending. Prefer [`ask_within`](Self::ask_within) where a hang is intolerable.
     ///
     /// # Errors
     ///
@@ -182,10 +159,8 @@ impl BuddyAgent {
 
     /// [`ask`](Self::ask), giving up after `timeout`.
     ///
-    /// Requires a tokio runtime with its time driver active, which Tauri's
-    /// async runtime provides. Polled off any tokio runtime this panics, and
-    /// the release profile sets `panic = "abort"`, so never drive it from a
-    /// plain `block_on` on a runtime built without `time`.
+    /// Needs a tokio runtime with its time driver, which Tauri's provides; the
+    /// release profile aborts on panic, so never drive this without `time`.
     ///
     /// # Errors
     ///

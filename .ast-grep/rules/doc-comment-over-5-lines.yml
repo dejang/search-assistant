@@ -1,0 +1,103 @@
+id: doc-comment-over-5-lines
+language: rust
+severity: error
+message: "Doc comment carries more than five lines; state the contract and stop (apply-style: Comments and API documentation)."
+# `comment-over-3-lines` does not cap these: its `plain` filter is `^//[^/!]`, so it only
+# reaches doc comments inside a function body, where they cannot document an API. This
+# rule skips bodies for that reason and owns every doc comment outside one.
+#
+# Doc comments are also `line_comment` nodes, so the nested `follows`/`precedes` chain
+# below counts a run the same way that rule does. Under `kind: doc_comment` no adjacency
+# predicate works at all, and `inside`/`has` counting is file-scoped, not block-scoped.
+#
+# Example code does not eat the budget: fences, hidden `# ` lines, and lines opening with
+# a code keyword plus a space are skipped. Blank `///` lines do count, so a run cannot be
+# padded with separators.
+#
+# Known limitations, do not re-derive them:
+# - `# Errors` and friends match the `# ` filter, so a rustdoc section heading is exempt
+#   and splits the run: a block with one heading gets five lines on each side of it.
+# - Only fence delimiters and code-looking lines are skipped, so six lines of English
+#   inside a ```text block still count. Sibling doc comments are invisible to each other,
+#   so "inside a fence" cannot be detected.
+# - A blank line is trivia, not a node, so a `//!` module doc followed by nothing but a
+#   blank line and an item doc reads as one run and the two share the five lines.
+utils:
+  example:
+    any:
+      - regex: '```'
+      - regex: '^//[/!]\s*#'
+      - regex: '^//[/!]\s*(use |let |fn |async fn|pub fn|Ok\(|Err\(|[}{])'
+  prose:
+    all:
+      - kind: line_comment
+      - regex: '^//[/!]'
+      - not: {matches: example}
+  before-1:
+    matches: prose
+    follows: {matches: prose}
+  before-2:
+    matches: prose
+    follows: {matches: prose, follows: {matches: prose}}
+  before-3:
+    matches: prose
+    follows: {matches: prose, follows: {matches: prose, follows: {matches: prose}}}
+  before-4:
+    matches: prose
+    follows:
+      matches: prose
+      follows:
+        matches: prose
+        follows:
+          matches: prose
+          follows: {matches: prose}
+  before-5:
+    matches: prose
+    follows:
+      matches: prose
+      follows:
+        matches: prose
+        follows:
+          matches: prose
+          follows:
+            matches: prose
+            follows: {matches: prose}
+  after-1:
+    matches: prose
+    precedes: {matches: prose}
+  after-2:
+    matches: prose
+    precedes: {matches: prose, precedes: {matches: prose}}
+  after-3:
+    matches: prose
+    precedes: {matches: prose, precedes: {matches: prose, precedes: {matches: prose}}}
+  after-4:
+    matches: prose
+    precedes:
+      matches: prose
+      precedes:
+        matches: prose
+        precedes:
+          matches: prose
+          precedes: {matches: prose}
+  after-5:
+    matches: prose
+    precedes:
+      matches: prose
+      precedes:
+        matches: prose
+        precedes:
+          matches: prose
+          precedes:
+            matches: prose
+            precedes: {matches: prose}
+rule:
+  all:
+    - not: {inside: {kind: function_item, stopBy: end}}
+    - any:
+        - matches: before-5
+        - all: [{matches: before-4}, {matches: after-1}]
+        - all: [{matches: before-3}, {matches: after-2}]
+        - all: [{matches: before-2}, {matches: after-3}]
+        - all: [{matches: before-1}, {matches: after-4}]
+        - matches: after-5

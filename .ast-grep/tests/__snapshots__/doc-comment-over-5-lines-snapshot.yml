@@ -1,0 +1,130 @@
+id: doc-comment-over-5-lines
+snapshots:
+  "//! Six module doc lines narrate the module's history,\n//!\n//! which is not a contract anyone calling into the\n//! module needs in order to use it correctly, and a\n//! reader can read the git log instead of this block\n//! here, where the sixth line makes it too long.\nfn probe() {}\n":
+    labels:
+    - source: |
+        //! Six module doc lines narrate the module's history,
+      style: primary
+      start: 0
+      end: 55
+    - source: |
+        //! here, where the sixth line makes it too long.
+      style: secondary
+      start: 218
+      end: 268
+    - source: |
+        //! reader can read the git log instead of this block
+      style: secondary
+      start: 164
+      end: 218
+    - source: |
+        //! module needs in order to use it correctly, and a
+      style: secondary
+      start: 111
+      end: 164
+    - source: |
+        //! which is not a contract anyone calling into the
+      style: secondary
+      start: 59
+      end: 111
+    - source: |
+        //!
+      style: secondary
+      start: 55
+      end: 59
+  "/// Prose that merely opens with a word a code block\n/// would use still counts toward the limit, so the\n/// loop in the folder cannot overflow the stack and\n/// the run keeps going past the fifth line right\n/// here, which is the sixth line of this doc comment\n/// and therefore an error.\nfn probe() {}\n":
+    labels:
+    - source: |
+        /// Prose that merely opens with a word a code block
+      style: primary
+      start: 0
+      end: 53
+    - source: |
+        /// and therefore an error.
+      style: secondary
+      start: 262
+      end: 290
+    - source: |
+        /// here, which is the sixth line of this doc comment
+      style: secondary
+      start: 208
+      end: 262
+    - source: |
+        /// the run keeps going past the fifth line right
+      style: secondary
+      start: 158
+      end: 208
+    - source: |
+        /// loop in the folder cannot overflow the stack and
+      style: secondary
+      start: 105
+      end: 158
+    - source: |
+        /// would use still counts toward the limit, so the
+      style: secondary
+      start: 53
+      end: 105
+  "/// Six doc lines document more than the API does.\n///\n/// The second paragraph runs on and on about why the\n/// code exists and which alternatives were weighed,\n/// which is narration the outline should carry, and\n/// this sixth line closes the run over the limit.\nfn probe() {}\n":
+    labels:
+    - source: |
+        /// Six doc lines document more than the API does.
+      style: primary
+      start: 0
+      end: 51
+    - source: |
+        /// this sixth line closes the run over the limit.
+      style: secondary
+      start: 215
+      end: 266
+    - source: |
+        /// which is narration the outline should carry, and
+      style: secondary
+      start: 162
+      end: 215
+    - source: |
+        /// code exists and which alternatives were weighed,
+      style: secondary
+      start: 109
+      end: 162
+    - source: |
+        /// The second paragraph runs on and on about why the
+      style: secondary
+      start: 55
+      end: 109
+    - source: |
+        ///
+      style: secondary
+      start: 51
+      end: 55
+  "impl Thing {\n    /// A method doc is capped the same way a free\n    /// function's is, at any indentation, and this\n    /// run carries one line more than the limit, so\n    /// the fifth line is not the last one here and\n    /// the sixth line closes the run and reports it\n    /// on every line of the block.\n    fn probe(&self) {}\n}\n":
+    labels:
+    - source: |
+        /// A method doc is capped the same way a free
+      style: primary
+      start: 17
+      end: 64
+    - source: |
+        /// on every line of the block.
+      style: secondary
+      start: 278
+      end: 310
+    - source: |
+        /// the sixth line closes the run and reports it
+      style: secondary
+      start: 225
+      end: 274
+    - source: |
+        /// the fifth line is not the last one here and
+      style: secondary
+      start: 173
+      end: 221
+    - source: |
+        /// run carries one line more than the limit, so
+      style: secondary
+      start: 120
+      end: 169
+    - source: |
+        /// function's is, at any indentation, and this
+      style: secondary
+      start: 68
+      end: 116

@@ -3,8 +3,7 @@ valid:
   - |
     fn probe() {
         // a plain comment whose text stays inside the ninety-six character budget
-        /// A doc comment may run well past the budget because it states an API
-        /// contract and the contract has to stay accurate rather than short
+        /// a doc comment of exactly ninety-six characters is allowed and this line is that exact width.
         let _ = 1;
     }
 invalid:
@@ -13,3 +12,6 @@ invalid:
         // this plain comment carries the whole explanation on one physical line because the line-count rules would otherwise never see it at all
         let _ = 1;
     }
+  - |
+    /// a doc comment of exactly ninety-seven characters is over the cap and this line is that exact.
+    fn probe() {}

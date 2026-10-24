@@ -3,10 +3,10 @@ language: rust
 severity: error
 message: "Implementation comment is longer than three lines; redesign instead of explaining (apply-style: Comments and API documentation)."
 # Every comment line inside a run of four or more plain comments is reported, so an edit
-# anywhere in an over-long run lands on a changed line. Doc comments (`///`, `//!`) state
-# API contracts and are exempt, except inside a function body: there they cannot document
-# an API, so every comment line counts toward the run and a doc line cannot be used to
-# break a run in half.
+# anywhere in an over-long run lands on a changed line. Doc comments (`///`, `//!`) are
+# not matched here: they state API contracts and carry their own, longer limit in
+# doc-comment-over-5-lines, except inside a function body, where they cannot document an
+# API and so count toward this run and cannot be used to break a run in half.
 #
 # Known limitation, do not re-derive it: `follows`/`precedes` walk sibling nodes and a
 # blank line is trivia, not a node, so `// a // b`, blank, `// c // d` reads as one run

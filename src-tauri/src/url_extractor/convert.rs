@@ -1,11 +1,7 @@
 //! HTML → Markdown conversion with link preservation.
 
 /// Convert an HTML string to Markdown, preserving links.
-///
-/// Strips `<script>`, `<style>`, and `<noscript>` elements before conversion,
-/// then uses `htmd` (a turndown.js port) which handles:
-/// - `<a href="...">text</a>` → `[text](url)`
-/// - Headings, lists, code blocks, blockquotes, emphasis, tables
+/// Strips `<script>`, `<style>`, and `<noscript>` before htmd conversion.
 ///
 /// # Errors
 ///
