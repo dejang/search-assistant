@@ -26,11 +26,19 @@ serde_json = "1"
 obscura = { git = "https://github.com/h4ckf0r0day/obscura", features = ["api"] }
 htmd = "0.5"
 regex = "1"
+# `rig-core`'s default `derive` feature pulls the `rig-derive` proc-macro for
+# derives this crate does not use; `rustls` and `reqwest` are what the OpenAI
+# client actually needs (`reqwest` is not a default feature and is required for
+# `OpenAI::from_env` / `OpenAIConfig::client`).
+rig-core = { version = "0.45", default-features = false, features = ["reqwest", "rustls"] }
+rig-agent = { version = "0.45", default-features = false }
 thiserror = "2"
-tokio = { version = "1", features = ["rt", "net", "io-util"] }
+# Only `time` is used by library code (`agent::BuddyAgent::ask_within`); the
+# runtime and IO features are needed solely by the tests below.
+tokio = { version = "1", features = ["time"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time"] }
 
 [lints.clippy]
 all = { level = "deny", priority = -2 }
