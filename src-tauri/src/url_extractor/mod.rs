@@ -41,6 +41,11 @@ pub struct ExtractedContent {
 ///
 /// This creates a fresh browser instance per call. For repeated use, prefer
 /// [`UrlExtractor`] which reuses a single browser.
+///
+/// # Errors
+///
+/// Returns [`ExtractorError`] if the browser cannot start, navigation fails,
+/// or HTML→Markdown conversion fails.
 pub async fn extract(url: &str) -> Result<ExtractedContent, ExtractorError> {
     let extractor = UrlExtractor::new()?;
     extractor.fetch(url).await
@@ -53,6 +58,10 @@ pub struct UrlExtractor {
 
 impl UrlExtractor {
     /// Create a new extractor with a headless browser.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExtractorError::Browser`] if the browser engine fails to initialize.
     pub fn new() -> Result<Self, ExtractorError> {
         let browser = Browser::builder()
             .build()
@@ -61,6 +70,10 @@ impl UrlExtractor {
     }
 
     /// Navigate to `url` and extract its content as Markdown.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExtractorError`] on browser, navigation, or conversion failure.
     pub async fn fetch(&self, url: &str) -> Result<ExtractedContent, ExtractorError> {
         let mut page = self
             .browser

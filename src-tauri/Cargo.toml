@@ -32,6 +32,14 @@ tokio = { version = "1", features = ["rt", "net", "io-util"] }
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
+[lints.clippy]
+all = { level = "deny", priority = -2 }
+pedantic = { level = "deny", priority = -1 }
+cognitive_complexity = "deny"
+self_named_module_files = "deny"
+
+[lints.rust]
+unreachable_pub = "deny"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

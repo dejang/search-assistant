@@ -20,8 +20,14 @@ fn hide_window(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
     }
+    drop(app);
 }
 
+/// Start the application: register global shortcuts, create windows, run the event loop.
+///
+/// # Errors
+///
+/// Returns [`tauri::Error`] if the runtime or a plugin fails to initialize.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
