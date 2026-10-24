@@ -1,0 +1,2 @@
+# Internal lint tooling: intentionally uses patterns the repo rules ban.
+scripts/js-tests-style.ts

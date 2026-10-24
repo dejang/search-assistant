@@ -1,0 +1,10 @@
+id: comment-line-too-long
+snapshots:
+  "fn probe() {\n    // this plain comment carries the whole explanation on one physical line because the line-count rules would otherwise never see it at all\n    let _ = 1;\n}\n":
+    labels:
+    - source: >-
+        // this plain comment carries the whole explanation on one physical line
+        because the line-count rules would otherwise never see it at all
+      style: primary
+      start: 17
+      end: 154

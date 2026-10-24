@@ -1,0 +1,12 @@
+id: block-comment-over-3-lines
+snapshots:
+  "fn probe() {\n    /* four physical lines of block comment explaining the\n       algorithm in detail, which is more than an\n       implementation comment may use, so the gate reports\n       the whole run */\n    let _ = 1;\n}\n":
+    labels:
+    - source: |-
+        /* four physical lines of block comment explaining the
+               algorithm in detail, which is more than an
+               implementation comment may use, so the gate reports
+               the whole run */
+      style: primary
+      start: 17
+      end: 204

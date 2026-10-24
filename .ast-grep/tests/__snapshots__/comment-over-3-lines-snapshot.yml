@@ -1,0 +1,102 @@
+id: comment-over-3-lines
+snapshots:
+  "fn probe() {\n    // one\n    // two\n    // three\n    // four\n    // five\n    let _ = 1;\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 17
+      end: 23
+    - source: // four
+      style: secondary
+      start: 52
+      end: 59
+    - source: // three
+      style: secondary
+      start: 39
+      end: 47
+    - source: // two
+      style: secondary
+      start: 28
+      end: 34
+  "fn probe() {\n    // one\n    // two\n    // three\n    // four\n    let _ = 1;\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 17
+      end: 23
+    - source: // four
+      style: secondary
+      start: 52
+      end: 59
+    - source: // three
+      style: secondary
+      start: 39
+      end: 47
+    - source: // two
+      style: secondary
+      start: 28
+      end: 34
+  "fn probe() {\n    // plain one\n    // plain two\n    /// a doc line does not split a run inside a body\n    // plain three\n    // plain four\n    let _ = 1;\n}\n":
+    labels:
+    - source: // plain one
+      style: primary
+      start: 17
+      end: 29
+    - source: |-
+        fn probe() {
+            // plain one
+            // plain two
+            /// a doc line does not split a run inside a body
+            // plain three
+            // plain four
+            let _ = 1;
+        }
+      style: secondary
+      start: 0
+      end: 154
+    - source: // plain three
+      style: secondary
+      start: 105
+      end: 119
+    - source: |
+        /// a doc line does not split a run inside a body
+      style: secondary
+      start: 51
+      end: 101
+    - source: // plain two
+      style: secondary
+      start: 34
+      end: 46
+  "fn probe() {\n    /// four doc lines inside a body document no API, so they\n    /// count toward the limit like any other comment line and\n    /// a run of four of them is reported here\n    /// as this fourth line completes\n    let _ = 1;\n}\n":
+    labels:
+    - source: |
+        /// four doc lines inside a body document no API, so they
+      style: primary
+      start: 17
+      end: 75
+    - source: |-
+        fn probe() {
+            /// four doc lines inside a body document no API, so they
+            /// count toward the limit like any other comment line and
+            /// a run of four of them is reported here
+            /// as this fourth line completes
+            let _ = 1;
+        }
+      style: secondary
+      start: 0
+      end: 239
+    - source: |
+        /// as this fourth line completes
+      style: secondary
+      start: 189
+      end: 223
+    - source: |
+        /// a run of four of them is reported here
+      style: secondary
+      start: 142
+      end: 185
+    - source: |
+        /// count toward the limit like any other comment line and
+      style: secondary
+      start: 79
+      end: 138

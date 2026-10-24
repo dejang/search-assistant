@@ -1,0 +1,307 @@
+@import "tailwindcss";
+
+/* Pane — design tokens. Generated from tokens.json (v1). Light is the default theme.
+   Theme: <html data-theme="light|dark">; no attribute = follow the OS (prefers-color-scheme). */
+
+:root,
+[data-theme="light"] {
+  /* color */
+  --window-bg: #ececec;
+  --content-bg: #ffffff;
+  --content-bg-alt: #f4f5f5;
+  --toolbar-bg: #f6f6f6eb;
+  --sidebar-bg: #e8e8e8d9;
+  --menu-bg: #f2f2f2eb;
+  --control-bg: #ffffff;
+  --control-bg-pressed: #e3e3e3;
+  --field-bg: #ffffff;
+  --fill: #0000000d;
+  --fill-strong: #0000001a;
+  --group-bg: #0000000a;
+  --knob: #ffffff;
+  --selection-inactive: #dcdcdc;
+  --segment-selected: var(--control-bg);
+  --separator: #0000001a;
+  --control-border: #808085;
+  --label: #000000d9;
+  --label-secondary: #00000099;
+  --label-tertiary: #00000047;
+  --accent: var(--blue);
+  --accent-fill: #0063e1;
+  --on-accent: #ffffff;
+  --link: #0066cc;
+  --red: #ff3b30;
+  --orange: #ff9500;
+  --yellow: #ffcc00;
+  --green: #28cd41;
+  --blue: #007aff;
+  --purple: #af52de;
+  --pink: #ff2d55;
+  --gray: #8e8e93;
+  --red-text: #d70015;
+  --orange-text: #b83000;
+  --green-text: #1a7431;
+  --danger-fill: #d70015;
+  --on-danger: #ffffff;
+  --window-close: #ff5f57;
+  --window-minimize: #febc2e;
+  --window-zoom: #28c840;
+  --window-control-inactive: #d1d1d1;
+  --window-control-rim: #00000026;
+  --window-control-glyph: #0000008c;
+  /* shadow */
+  --shadow-control: 0 0 0 0.5px #0000001f, 0 0.5px 1.5px #00000033;
+  --shadow-field: inset 0 0.5px 1px #0000001a;
+  --shadow-knob: 0 0 0 0.5px #00000029, 0 1px 2.5px #00000033;
+  --shadow-menu: 0 0 0 0.5px #0000002e, 0 10px 32px #00000038;
+  --shadow-window: 0 0 0 0.5px #00000040, 0 4px 12px #0000001f, 0 22px 56px #00000047;
+  --focus-ring: 0 0 0 3px #007aff;
+}
+
+[data-theme="dark"] {
+  /* color */
+  --window-bg: #323232;
+  --content-bg: #1e1e1e;
+  --content-bg-alt: #282828;
+  --toolbar-bg: #363636eb;
+  --sidebar-bg: #282828d9;
+  --menu-bg: #2c2c2ceb;
+  --control-bg: #636366;
+  --control-bg-pressed: #4f4f51;
+  --field-bg: #2c2c2e;
+  --fill: #ffffff12;
+  --fill-strong: #ffffff1f;
+  --group-bg: #ffffff0d;
+  --knob: #e5e5e7;
+  --selection-inactive: #3a3a3a;
+  --segment-selected: var(--control-bg);
+  --separator: #ffffff1a;
+  --control-border: #8e8e93;
+  --label: #ffffffd9;
+  --label-secondary: #ffffff8c;
+  --label-tertiary: #ffffff40;
+  --accent: var(--blue);
+  --accent-fill: #0058d0;
+  --link: #4aa3ff;
+  --red: #ff453a;
+  --orange: #ff9f0a;
+  --yellow: #ffd60a;
+  --green: #32d74b;
+  --blue: #0a84ff;
+  --purple: #bf5af2;
+  --pink: #ff375f;
+  --gray: #98989d;
+  --red-text: #ff6961;
+  --orange-text: #ffb340;
+  --green-text: #30db5b;
+  --danger-fill: #d92418;
+  --window-control-inactive: #4e4e4e;
+  --window-control-rim: #0000004d;
+  /* shadow */
+  --shadow-control: inset 0 0.5px 0 #ffffff26, 0 0 0 0.5px #00000066, 0 0.5px 1.5px #00000066;
+  --shadow-field: inset 0 0.5px 1px #00000040;
+  --shadow-knob: 0 0 0 0.5px #00000066, 0 1px 2.5px #00000080;
+  --shadow-menu: inset 0 0 0 0.5px #ffffff26, 0 0 0 0.5px #000000b3, 0 10px 32px #00000099;
+  --shadow-window: inset 0 0 0 0.5px #ffffff26, 0 0 0 0.5px #000000d9, 0 22px 56px #000000a6;
+  --focus-ring: 0 0 0 3px #0a84ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* color */
+    --window-bg: #323232;
+    --content-bg: #1e1e1e;
+    --content-bg-alt: #282828;
+    --toolbar-bg: #363636eb;
+    --sidebar-bg: #282828d9;
+    --menu-bg: #2c2c2ceb;
+    --control-bg: #636366;
+    --control-bg-pressed: #4f4f51;
+    --field-bg: #2c2c2e;
+    --fill: #ffffff12;
+    --fill-strong: #ffffff1f;
+    --group-bg: #ffffff0d;
+    --knob: #e5e5e7;
+    --selection-inactive: #3a3a3a;
+    --segment-selected: var(--control-bg);
+    --separator: #ffffff1a;
+    --control-border: #8e8e93;
+    --label: #ffffffd9;
+    --label-secondary: #ffffff8c;
+    --label-tertiary: #ffffff40;
+    --accent: var(--blue);
+    --accent-fill: #0058d0;
+    --link: #4aa3ff;
+    --red: #ff453a;
+    --orange: #ff9f0a;
+    --yellow: #ffd60a;
+    --green: #32d74b;
+    --blue: #0a84ff;
+    --purple: #bf5af2;
+    --pink: #ff375f;
+    --gray: #98989d;
+    --red-text: #ff6961;
+    --orange-text: #ffb340;
+    --green-text: #30db5b;
+    --danger-fill: #d92418;
+    --window-control-inactive: #4e4e4e;
+    --window-control-rim: #0000004d;
+    /* shadow */
+    --shadow-control: inset 0 0.5px 0 #ffffff26, 0 0 0 0.5px #00000066, 0 0.5px 1.5px #00000066;
+    --shadow-field: inset 0 0.5px 1px #00000040;
+    --shadow-knob: 0 0 0 0.5px #00000066, 0 1px 2.5px #00000080;
+    --shadow-menu: inset 0 0 0 0.5px #ffffff26, 0 0 0 0.5px #000000b3, 0 10px 32px #00000099;
+    --shadow-window: inset 0 0 0 0.5px #ffffff26, 0 0 0 0.5px #000000d9, 0 22px 56px #000000a6;
+    --focus-ring: 0 0 0 3px #0a84ff;
+  }
+}
+
+:root {
+  /* spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  /* radius */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+  /* size */
+  --control-small: 18px;
+  --control-regular: 22px;
+  --control-large: 28px;
+  --row-height: 24px;
+  --sidebar-row: 28px;
+  --titlebar-height: 28px;
+  --toolbar-height: 52px;
+  --sidebar-width: 220px;
+  /* blur */
+  --blur-material: 24px;
+  --material-saturation: 180%;
+  /* opacity */
+  --opacity-disabled: 0.45;
+  /* font families */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* text styles */
+.pn-text-large-title { font-family: var(--font-sans); font-size: 26px; line-height: 32px; font-weight: 400; }
+.pn-text-title-1 { font-family: var(--font-sans); font-size: 22px; line-height: 26px; font-weight: 400; }
+.pn-text-title-2 { font-family: var(--font-sans); font-size: 17px; line-height: 22px; font-weight: 400; }
+.pn-text-title-3 { font-family: var(--font-sans); font-size: 15px; line-height: 20px; font-weight: 400; }
+.pn-text-headline { font-family: var(--font-sans); font-size: 13px; line-height: 16px; font-weight: 700; }
+.pn-text-body { font-family: var(--font-sans); font-size: 13px; line-height: 16px; font-weight: 400; }
+.pn-text-callout { font-family: var(--font-sans); font-size: 12px; line-height: 15px; font-weight: 400; }
+.pn-text-subheadline { font-family: var(--font-sans); font-size: 11px; line-height: 14px; font-weight: 400; }
+.pn-text-footnote { font-family: var(--font-sans); font-size: 10px; line-height: 13px; font-weight: 400; }
+.pn-text-caption-1 { font-family: var(--font-sans); font-size: 10px; line-height: 13px; font-weight: 400; }
+.pn-text-caption-2 { font-family: var(--font-sans); font-size: 10px; line-height: 13px; font-weight: 500; }
+.pn-text-code { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 400; }
+
+/* Pane — Tailwind theme mapping (spec §3.9). Utilities like bg-window-bg, text-label,
+   rounded-pn-sm and shadow-pn-control resolve to the Pane tokens above. */
+@theme inline {
+  /* colors → bg-window-bg, text-label, border-control-border … */
+  --color-window-bg: var(--window-bg);
+  --color-content-bg: var(--content-bg);
+  --color-content-bg-alt: var(--content-bg-alt);
+  --color-toolbar-bg: var(--toolbar-bg);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-menu-bg: var(--menu-bg);
+  --color-control-bg: var(--control-bg);
+  --color-control-bg-pressed: var(--control-bg-pressed);
+  --color-field-bg: var(--field-bg);
+  --color-fill: var(--fill);
+  --color-fill-strong: var(--fill-strong);
+  --color-group-bg: var(--group-bg);
+  --color-knob: var(--knob);
+  --color-selection-inactive: var(--selection-inactive);
+  --color-segment-selected: var(--segment-selected);
+  --color-separator: var(--separator);
+  --color-control-border: var(--control-border);
+  --color-label: var(--label);
+  --color-label-secondary: var(--label-secondary);
+  --color-label-tertiary: var(--label-tertiary);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-on-accent: var(--on-accent);
+  --color-link: var(--link);
+  --color-red: var(--red);
+  --color-orange: var(--orange);
+  --color-yellow: var(--yellow);
+  --color-green: var(--green);
+  --color-blue: var(--blue);
+  --color-purple: var(--purple);
+  --color-pink: var(--pink);
+  --color-gray: var(--gray);
+  --color-red-text: var(--red-text);
+  --color-orange-text: var(--orange-text);
+  --color-green-text: var(--green-text);
+  --color-danger-fill: var(--danger-fill);
+  --color-on-danger: var(--on-danger);
+  --color-window-close: var(--window-close);
+  --color-window-minimize: var(--window-minimize);
+  --color-window-zoom: var(--window-zoom);
+  --color-window-control-inactive: var(--window-control-inactive);
+  --color-window-control-rim: var(--window-control-rim);
+  --color-window-control-glyph: var(--window-control-glyph);
+  /* radii → rounded-pn-sm … */
+  --radius-pn-xs: var(--radius-xs);
+  --radius-pn-sm: var(--radius-sm);
+  --radius-pn-md: var(--radius-md);
+  --radius-pn-lg: var(--radius-lg);
+  --radius-pn-full: var(--radius-full);
+  /* shadows → shadow-pn-control … (focus ring: shadow-pn-focus-ring) */
+  --shadow-pn-control: var(--shadow-control);
+  --shadow-pn-field: var(--shadow-field);
+  --shadow-pn-knob: var(--shadow-knob);
+  --shadow-pn-menu: var(--shadow-menu);
+  --shadow-pn-window: var(--shadow-window);
+  --shadow-pn-focus-ring: var(--focus-ring);
+  /* fonts → font-pane, font-pane-mono. Spacing: Tailwind's default 4px scale already matches space-N. */
+  --font-pane: var(--font-sans);
+  --font-pane-mono: var(--font-mono);
+  /* kit additions (§3.6 / §3.2 control metrics the spec's mapping does not cover) */
+  --height-control-small: var(--control-small);
+  --height-control-regular: var(--control-regular);
+  --height-control-large: var(--control-large);
+  --text-pn-body: 13px;
+  --text-pn-body--line-height: 16px;
+  --text-pn-small: 11px;
+  --text-pn-small--line-height: 14px;
+}
+
+/* Pane — page defaults (spec §2.4). */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+  }
+}
+
+@layer base {
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 16px;
+    background: var(--window-bg);
+    color: var(--label);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

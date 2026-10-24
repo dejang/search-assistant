@@ -1,0 +1,63 @@
+id: comment-over-3-lines
+valid:
+  - |
+    fn probe() {
+        // one
+        // two
+        // three
+        let _ = 1;
+    }
+  - |
+    /// Module documentation is exempt from the three-line limit.
+    ///
+    /// It states the API's own guarantees.
+    /// So it may run longer.
+    fn probe() {}
+  - |
+    /// A doc comment outside a function body breaks the run: it states a contract.
+    // plain one
+    // plain two
+    // plain three
+    fn probe() {}
+  - |
+    fn probe() {
+        // two plain lines and a doc line stay inside the limit
+        // as well
+        /// a doc line
+        let _ = 1;
+    }
+invalid:
+  - |
+    fn probe() {
+        // one
+        // two
+        // three
+        // four
+        let _ = 1;
+    }
+  - |
+    fn probe() {
+        // one
+        // two
+        // three
+        // four
+        // five
+        let _ = 1;
+    }
+  - |
+    fn probe() {
+        // plain one
+        // plain two
+        /// a doc line does not split a run inside a body
+        // plain three
+        // plain four
+        let _ = 1;
+    }
+  - |
+    fn probe() {
+        /// four doc lines inside a body document no API, so they
+        /// count toward the limit like any other comment line and
+        /// a run of four of them is reported here
+        /// as this fourth line completes
+        let _ = 1;
+    }

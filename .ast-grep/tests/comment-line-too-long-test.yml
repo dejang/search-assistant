@@ -1,0 +1,15 @@
+id: comment-line-too-long
+valid:
+  - |
+    fn probe() {
+        // a plain comment whose text stays inside the ninety-six character budget
+        /// A doc comment may run well past the budget because it states an API
+        /// contract and the contract has to stay accurate rather than short
+        let _ = 1;
+    }
+invalid:
+  - |
+    fn probe() {
+        // this plain comment carries the whole explanation on one physical line because the line-count rules would otherwise never see it at all
+        let _ = 1;
+    }
