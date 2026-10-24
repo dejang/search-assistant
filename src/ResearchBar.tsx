@@ -12,10 +12,7 @@ const pillStyle: React.CSSProperties = {
   boxShadow: '0 4px 24px rgba(0,0,0,0.28), 0 1px 3px rgba(0,0,0,0.12)',
 };
 
-/**
- * Floating research command bar rendered inside the undecorated Tauri window.
- * A translucent pill with a search icon and large input, using the Pane TextField.
- */
+/** Floating research command bar: translucent pill with search icon + TextField. */
 export function ResearchBar() {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [value, setValue] = React.useState('');

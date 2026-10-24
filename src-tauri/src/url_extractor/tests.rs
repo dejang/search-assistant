@@ -129,11 +129,13 @@ mod integration {
         unsafe { std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1") };
     }
 
-    /// Serve a fixture file over HTTP and return the URL.
-    async fn serve_fixture(fixture: &str) -> (String, tokio::task::JoinHandle<()>) {
+    /// Serve a fixture over HTTP; returns (url, server_future) to drive with tokio::join!.
+    async fn serve_fixture(
+        fixture: &str,
+    ) -> (String, impl std::future::Future<Output = ()>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr: SocketAddr = listener.local_addr().unwrap();
-        let html = match fixture {
+        let html: &str = match fixture {
             "simple" => include_str!("fixtures/simple.html"),
             "links" => include_str!("fixtures/links.html"),
             "rich" => include_str!("fixtures/rich.html"),
@@ -142,7 +144,7 @@ mod integration {
         };
         let html = html.to_string();
 
-        let server = tokio::spawn(async move {
+        let server = async move {
             if let Ok((mut stream, _)) = listener.accept().await {
                 let mut buf = [0u8; 4096];
                 let _ = stream.read(&mut buf).await;
@@ -154,7 +156,7 @@ mod integration {
                 let _ = stream.write_all(response.as_bytes()).await;
                 let _ = stream.flush().await;
             }
-        });
+        };
 
         (format!("http://{addr}/"), server)
     }
@@ -162,9 +164,10 @@ mod integration {
     #[tokio::test]
     async fn fetch_simple_page() {
         allow_private_network();
-        let (url, _server) = serve_fixture("simple").await;
+        let (url, server) = serve_fixture("simple").await;
         let extractor = UrlExtractor::new().expect("failed to create browser");
-        let result: ExtractedContent = extractor.fetch(&url).await.expect("fetch failed");
+        let (result, _) = tokio::join!(extractor.fetch(&url), server);
+        let result: ExtractedContent = result.expect("fetch failed");
 
         assert!(result.markdown.contains("[link to example](https://example.com)"));
         assert!(result.markdown.contains("# Hello World"));
@@ -174,9 +177,10 @@ mod integration {
     #[tokio::test]
     async fn fetch_link_heavy_page() {
         allow_private_network();
-        let (url, _server) = serve_fixture("links").await;
+        let (url, server) = serve_fixture("links").await;
         let extractor = UrlExtractor::new().expect("failed to create browser");
-        let result = extractor.fetch(&url).await.expect("fetch failed");
+        let (result, _) = tokio::join!(extractor.fetch(&url), server);
+        let result = result.expect("fetch failed");
 
         assert!(result.markdown.contains("[Rust Language](https://rust-lang.org)"));
         assert!(result.markdown.contains("[Tauri Framework](https://tauri.app)"));
@@ -187,9 +191,10 @@ mod integration {
     #[tokio::test]
     async fn fetch_rich_page() {
         allow_private_network();
-        let (url, _server) = serve_fixture("rich").await;
+        let (url, server) = serve_fixture("rich").await;
         let extractor = UrlExtractor::new().expect("failed to create browser");
-        let result = extractor.fetch(&url).await.expect("fetch failed");
+        let (result, _) = tokio::join!(extractor.fetch(&url), server);
+        let result = result.expect("fetch failed");
 
         assert!(result.markdown.contains("# Article Title"));
         assert!(result.markdown.contains("## Section One"));
@@ -201,9 +206,10 @@ mod integration {
     #[tokio::test]
     async fn fetch_empty_page() {
         allow_private_network();
-        let (url, _server) = serve_fixture("empty").await;
+        let (url, server) = serve_fixture("empty").await;
         let extractor = UrlExtractor::new().expect("failed to create browser");
-        let result = extractor.fetch(&url).await.expect("fetch failed");
+        let (result, _) = tokio::join!(extractor.fetch(&url), server);
+        let result = result.expect("fetch failed");
 
         assert!(!result.markdown.contains("<"));
         assert_eq!(result.title, "Empty Page");
