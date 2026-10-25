@@ -1,11 +1,44 @@
 import * as React from 'react';
-import Markdown from 'react-markdown';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Icon } from './components/ui/icons/Icon';
 import type { IconName } from './components/ui/icons/paths';
 import type { ResearchAction, ResearchActivity, ResearchPhase, ResearchState, Researcher } from './useResearch';
 
 const REMARK_PLUGINS = [remarkGfm];
+
+function handleLinkClick(e: React.MouseEvent<HTMLAnchorElement>) {
+  e.preventDefault();
+  const href = e.currentTarget.getAttribute('href');
+  if (href && /^https?:\/\//i.test(href)) {
+    openUrl(href).catch(() => undefined);
+  }
+}
+
+function handleLinkAuxClick(e: React.MouseEvent<HTMLAnchorElement>) {
+  e.preventDefault();
+  const href = e.currentTarget.getAttribute('href');
+  if (e.button === 1 && href && /^https?:\/\//i.test(href)) {
+    openUrl(href).catch(() => undefined);
+  }
+}
+
+function ExternalLink({
+  href,
+  children,
+  ...props
+}: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  return (
+    <a {...props} href={href} onClick={handleLinkClick} onAuxClick={handleLinkAuxClick}>
+      {children}
+    </a>
+  );
+}
+
+const MARKDOWN_COMPONENTS: Components = {
+  a: ExternalLink,
+};
 
 const HEADER: Record<ResearchPhase, string> = {
   idle: 'Research',
@@ -72,11 +105,11 @@ function Working({ activity }: { activity: ResearchActivity | null }) {
 }
 
 /** The expanded research view: live counts, current activity, then the report. */
-export function ResearchPanel({ state }: { state: ResearchState }) {
+export function ResearchPanel({ state, onReset }: { state: ResearchState; onReset: () => void }) {
   const { activity } = state;
 
   return (
-    <div className="flex h-screen w-screen items-stretch justify-center bg-transparent select-none p-6">
+    <div className="flex h-screen w-screen items-stretch justify-center bg-transparent p-6">
       <div className="flex w-full flex-col overflow-hidden rounded-xl" style={panelStyle}>
         <header
           className="flex shrink-0 items-center gap-3 border-b border-separator px-5 py-3.5"
@@ -89,6 +122,15 @@ export function ResearchPanel({ state }: { state: ResearchState }) {
             <Tally icon="globe" value={activity?.reads ?? 0} label="pages" />
             <Tally icon="person" value={activity?.subagents ?? 0} label="subagents" />
           </span>
+          <button
+            type="button"
+            onClick={onReset}
+            disabled={state.phase === 'running'}
+            aria-label="Reset search"
+            className="flex size-[22px] shrink-0 items-center justify-center rounded-pn-sm text-label-secondary enabled:hover:bg-fill enabled:hover:text-label enabled:active:bg-fill-strong focus-visible:outline-hidden focus-visible:shadow-pn-focus-ring disabled:opacity-(--opacity-disabled)"
+          >
+            <Icon name="xmark" size={14} />
+          </button>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -103,7 +145,9 @@ export function ResearchPanel({ state }: { state: ResearchState }) {
 
           {state.phase === 'done' && (
             <article className={MARKDOWN_CLASSES}>
-              <Markdown remarkPlugins={REMARK_PLUGINS}>{state.report}</Markdown>
+              <Markdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
+                {state.report}
+              </Markdown>
             </article>
           )}
         </div>

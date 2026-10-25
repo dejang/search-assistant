@@ -38,5 +38,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [expanded, state.phase, collapse]);
 
-  return expanded ? <ResearchPanel state={state} /> : <ResearchBar onSubmit={submit} />;
+  return expanded ? (
+    <ResearchPanel state={state} onReset={collapse} />
+  ) : (
+    <ResearchBar onSubmit={submit} />
+  );
 }

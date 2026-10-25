@@ -75,7 +75,7 @@ export function ResearchBar({ onSubmit }: ResearchBarProps) {
   }, [downloading]);
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-transparent select-none px-10 py-14">
+    <div className="flex h-screen w-screen items-center justify-center bg-transparent px-10 py-14">
       {/* Positions the model progress row against the pill's bottom edge */}
       <div className="relative w-full">
         {/* The pill — shadow applied directly here, sized to fit within window padding */}
