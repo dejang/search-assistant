@@ -2,64 +2,67 @@ id: comment-over-3-lines
 language: rust
 severity: error
 message: "Comment run is longer than three lines; redesign instead of explaining (apply-style: Comments and API documentation)."
-# Every comment kind counts, and a run spans blank lines and attributes. Every line of
-# a block comment counts. `lines-N` ignores the newline a doc comment's text ends with.
+# A run is adjacent comments of any kind. Blank lines, attributes, `,` and `;` do not end
+# it, and it carries into and out of nested nodes. `lines-N` skips a doc comment's final
+# newline. `run-N`: a comment that starts at least N lines of its run.
 utils:
   comment:
     any: [{kind: line_comment}, {kind: block_comment}]
-  barrier:
-    not: {any: [{kind: attribute_item}, {kind: inner_attribute_item}]}
+  see-through:
+    any:
+      - kind: attribute_item
+      - kind: inner_attribute_item
+      - kind: empty_statement
+      - regex: '^[#!,;]$'
+      - {kind: token_tree, regex: '^\[', follows: {regex: '^[#!]$'}}
+  solid: {not: {matches: see-through}}
+  first: {not: {follows: {matches: solid, stopBy: end}}}
+  last: {not: {precedes: {matches: solid, stopBy: end}}}
   lines-2: {regex: '\n[\s\S]'}
   lines-3: {regex: '\n[\s\S]*\n[\s\S]'}
   lines-4: {regex: '\n[\s\S]*\n[\s\S]*\n[\s\S]'}
-  fwd-1: {matches: comment}
-  fwd-2:
-    matches: comment
+  opens-1: {has: {matches: first, any: [{matches: comment}, {matches: opens-1}]}}
+  opens-2: {has: {matches: first, any: [{matches: run-2}, {matches: opens-2}]}}
+  opens-3: {has: {matches: first, any: [{matches: run-3}, {matches: opens-3}]}}
+  step-1: {precedes: {stopBy: {matches: solid}, any: [{matches: comment}, {matches: opens-1}]}}
+  step-2: {precedes: {stopBy: {matches: solid}, any: [{matches: run-2}, {matches: opens-2}]}}
+  step-3: {precedes: {stopBy: {matches: solid}, any: [{matches: run-3}, {matches: opens-3}]}}
+  next-1:
     any:
-      - matches: lines-2
-      - precedes: {matches: fwd-1, stopBy: {matches: barrier}}
-  fwd-3:
+      - matches: step-1
+      - all: [{matches: last}, {inside: {stopBy: {not: {matches: last}}, matches: step-1}}]
+  next-2:
+    any:
+      - matches: step-2
+      - all: [{matches: last}, {inside: {stopBy: {not: {matches: last}}, matches: step-2}}]
+  next-3:
+    any:
+      - matches: step-3
+      - all: [{matches: last}, {inside: {stopBy: {not: {matches: last}}, matches: step-3}}]
+  run-2:
+    matches: comment
+    any: [{matches: lines-2}, {matches: next-1}]
+  run-3:
     matches: comment
     any:
       - matches: lines-3
-      - all:
-          - matches: lines-2
-          - precedes: {matches: fwd-1, stopBy: {matches: barrier}}
-      - precedes: {matches: fwd-2, stopBy: {matches: barrier}}
-  fwd-4:
+      - all: [{matches: lines-2}, {matches: next-1}]
+      - matches: next-2
+  run-4:
     matches: comment
     any:
       - matches: lines-4
-      - all:
-          - matches: lines-3
-          - precedes: {matches: fwd-1, stopBy: {matches: barrier}}
-      - all:
-          - matches: lines-2
-          - precedes: {matches: fwd-2, stopBy: {matches: barrier}}
-      - precedes: {matches: fwd-3, stopBy: {matches: barrier}}
-  bwd-1: {matches: comment}
-  bwd-2:
+      - all: [{matches: lines-3}, {matches: next-1}]
+      - all: [{matches: lines-2}, {matches: next-2}]
+      - matches: next-3
+  closes-over: {has: {matches: last, any: [{matches: over}, {matches: closes-over}]}}
+  back-over:
+    follows: {stopBy: {matches: solid}, any: [{matches: over}, {matches: closes-over}]}
+  over:
     matches: comment
     any:
-      - matches: lines-2
-      - follows: {matches: bwd-1, stopBy: {matches: barrier}}
-  bwd-3:
-    matches: comment
-    any:
-      - matches: lines-3
-      - all:
-          - matches: lines-2
-          - follows: {matches: bwd-1, stopBy: {matches: barrier}}
-      - follows: {matches: bwd-2, stopBy: {matches: barrier}}
+      - matches: run-4
+      - matches: back-over
+      - all: [{matches: first}, {inside: {stopBy: {not: {matches: first}}, matches: back-over}}]
 rule:
-  any:
-    - matches: fwd-4
-    - all:
-        - matches: fwd-3
-        - follows: {matches: bwd-1, stopBy: {matches: barrier}}
-    - all:
-        - matches: fwd-2
-        - follows: {matches: bwd-2, stopBy: {matches: barrier}}
-    - all:
-        - matches: fwd-1
-        - follows: {matches: bwd-3, stopBy: {matches: barrier}}
+  matches: over
