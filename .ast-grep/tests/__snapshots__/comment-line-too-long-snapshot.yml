@@ -14,6 +14,23 @@ snapshots:
       style: primary
       start: 0
       end: 98
+  "fn probe() {\n    /* a block comment line of exactly ninety-seven characters is over the cap and the line's wide */\n    let _ = 1;\n}\n":
+    labels:
+    - source: >-
+        /* a block comment line of exactly ninety-seven characters is over the cap and
+        the line's wide */
+      style: primary
+      start: 17
+      end: 114
+  "fn probe() {\n    /* short first line\n       the second line of a block comment is measured from its first non-space character, and it's over.\n    */\n    let _ = 1;\n}\n":
+    labels:
+    - source: |-
+        /* short first line
+               the second line of a block comment is measured from its first non-space character, and it's over.
+            */
+      style: primary
+      start: 17
+      end: 148
   "fn probe() {\n    // this plain comment carries the whole explanation on one physical line because the line-count rules would otherwise never see it at all\n    let _ = 1;\n}\n":
     labels:
     - source: >-

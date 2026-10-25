@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>research-buddy · local model — system design</title>
+<style>
+/* Pane design tokens — copied from src/main.css so this artifact renders in the
+   app's own design system and stays portable with no network. */
+:root, [data-theme="light"] {
+  --window-bg:#ececec; --content-bg:#ffffff; --content-bg-alt:#f4f5f5;
+  --fill:#0000000d; --fill-strong:#0000001a; --group-bg:#0000000a;
+  --separator:#0000001a; --control-border:#808085;
+  --label:#000000d9; --label-secondary:#00000099; --label-tertiary:#00000047;
+  --accent:#007aff; --accent-fill:#0063e1; --on-accent:#fff;
+  --red:#ff3b30; --orange:#ff9500; --yellow:#ffcc00; --green:#28cd41;
+  --blue:#007aff; --purple:#af52de; --pink:#ff2d55; --gray:#8e8e93;
+  --red-text:#d70015; --orange-text:#b83000; --green-text:#1a7431;
+  --shadow-control:0 0 0 .5px #0000001f, 0 .5px 1.5px #00000033;
+  --shadow-menu:0 0 0 .5px #0000002e, 0 10px 32px #00000038;
+  --radius-xs:3px; --radius-sm:5px; --radius-md:6px; --radius-lg:10px; --radius-full:9999px;
+  --font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro","Helvetica Neue","Segoe UI",system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  --window-bg:#323232; --content-bg:#1e1e1e; --content-bg-alt:#282828;
+  --fill:#ffffff12; --fill-strong:#ffffff1f; --group-bg:#ffffff0d;
+  --separator:#ffffff1a; --control-border:#8e8e93;
+  --label:#ffffffd9; --label-secondary:#ffffff8c; --label-tertiary:#ffffff40;
+  --accent:#0a84ff; --accent-fill:#0058d0;
+  --red:#ff453a; --orange:#ff9f0a; --yellow:#ffd60a; --green:#32d74b;
+  --blue:#0a84ff; --purple:#bf5af2; --pink:#ff375f; --gray:#98989d;
+  --red-text:#ff6961; --orange-text:#ffb340; --green-text:#30db5b;
+  --shadow-control:inset 0 .5px 0 #ffffff26, 0 0 0 .5px #00000066, 0 .5px 1.5px #00000066;
+  --shadow-menu:inset 0 0 0 .5px #ffffff26, 0 0 0 .5px #000000b3, 0 10px 32px #00000099;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --window-bg:#323232; --content-bg:#1e1e1e; --content-bg-alt:#282828;
+    --fill:#ffffff12; --fill-strong:#ffffff1f; --group-bg:#ffffff0d;
+    --separator:#ffffff1a; --control-border:#8e8e93;
+    --label:#ffffffd9; --label-secondary:#ffffff8c; --label-tertiary:#ffffff40;
+    --accent:#0a84ff; --accent-fill:#0058d0;
+    --red:#ff453a; --orange:#ff9f0a; --yellow:#ffd60a; --green:#32d74b;
+    --blue:#0a84ff; --purple:#bf5af2; --pink:#ff375f; --gray:#98989d;
+    --red-text:#ff6961; --orange-text:#ffb340; --green-text:#30db5b;
+    --shadow-control:inset 0 .5px 0 #ffffff26, 0 0 0 .5px #00000066, 0 .5px 1.5px #00000066;
+    --shadow-menu:inset 0 0 0 .5px #ffffff26, 0 0 0 .5px #000000b3, 0 10px 32px #00000099;
+    color-scheme: dark;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+:where(.grid,.flex,[style*="display: grid"],[style*="display:grid"],[style*="display: flex"],[style*="display:flex"]) > * { min-width: 0; }
+:where(p,h1,h2,h3,h4,li,td,th,figcaption,code,badge) { overflow-wrap: anywhere; }
+:where(img,svg) { max-width: 100%; height: auto; }
+
+body {
+  margin:0; background:var(--window-bg); color:var(--label);
+  font-family:var(--font-sans); font-size:13px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap { max-width:1080px; margin:0 auto; padding:28px 20px 72px; }
+header.top { display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:6px; }
+h1 { font-size:22px; line-height:26px; font-weight:600; margin:0; letter-spacing:-.01em; }
+.sub { color:var(--label-secondary); font-size:13px; margin:4px 0 0; max-width:62ch; }
+h2 { font-size:15px; line-height:20px; font-weight:600; margin:0 0 2px; }
+h3 { font-size:13px; font-weight:600; margin:0 0 4px; }
+section { margin-top:34px; }
+.lede { color:var(--label-secondary); font-size:12px; margin:0 0 14px; max-width:78ch; }
+.card {
+  background:var(--content-bg); border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-control); padding:18px 18px 20px;
+}
+.figure { background:var(--content-bg); border-radius:var(--radius-lg); box-shadow:var(--shadow-control); padding:16px 16px 8px; }
+.figure figcaption { color:var(--label-secondary); font-size:11px; line-height:15px; padding:8px 4px 8px; border-top:1px solid var(--separator); margin-top:10px; }
+code, .mono { font-family:var(--font-mono); font-size:11.5px; }
+code { background:var(--fill); padding:1px 4px; border-radius:var(--radius-xs); }
+.kicker { font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--label-tertiary); }
+.badge {
+  display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:600;
+  padding:2px 7px; border-radius:var(--radius-full); border:.5px solid var(--separator);
+  color:var(--label-secondary); background:var(--content-bg-alt); white-space:nowrap;
+}
+.badge.ok { color:var(--green-text); border-color:color-mix(in srgb, var(--green) 45%, transparent); }
+.badge.warn { color:var(--orange-text); border-color:color-mix(in srgb, var(--orange) 50%, transparent); }
+.badge.no { color:var(--red-text); border-color:color-mix(in srgb, var(--red) 45%, transparent); }
+.badge.info { color:var(--accent); border-color:color-mix(in srgb, var(--blue) 45%, transparent); }
+.grid { display:grid; gap:12px; }
+/* min(100%, Npx) so a column never exceeds the container and wraps instead of
+   collapsing to one word per line on a phone. */
+.g2 { grid-template-columns:repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.g3 { grid-template-columns:repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.tile { background:var(--content-bg); border-radius:var(--radius-md); box-shadow:var(--shadow-control); padding:14px 15px; }
+.tile p { margin:0; color:var(--label-secondary); font-size:12px; }
+.tile .kicker { display:block; margin-bottom:6px; }
+ul.tight { margin:6px 0 0; padding-left:16px; color:var(--label-secondary); font-size:12px; }
+ul.tight li { margin:3px 0; }
+.answer {
+  background:var(--content-bg); border-left:3px solid var(--accent);
+  border-radius:var(--radius-md); box-shadow:var(--shadow-control);
+  padding:14px 16px; font-size:14px; line-height:1.55; margin:16px 0 0;
+}
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--separator); vertical-align:top; }
+th { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--label-tertiary); font-weight:700; }
+td.mono, th.mono { font-family:var(--font-mono); font-size:11px; white-space:nowrap; overflow-wrap:normal; }
+tbody tr:last-child td { border-bottom:0; }
+.tablewrap { background:var(--content-bg); border-radius:var(--radius-lg); box-shadow:var(--shadow-control); overflow-x:auto; }
+.theme-btn {
+  font-family:inherit; font-size:11px; font-weight:600; color:var(--label-secondary);
+  background:var(--content-bg); border:.5px solid var(--separator); border-radius:var(--radius-full);
+  padding:5px 11px; cursor:pointer; box-shadow:var(--shadow-control);
+}
+.legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--label-secondary); padding:2px 4px 6px; }
+.legend span { display:inline-flex; align-items:center; gap:6px; }
+.swatch { width:10px; height:10px; border-radius:3px; display:inline-block; }
+svg text { font-family:var(--font-sans); fill:var(--label); }
+svg .t-sm { font-size:10.5px; fill:var(--label-secondary); }
+svg .t-xs { font-size:9.5px; fill:var(--label-tertiary); }
+svg .t-mono { font-family:var(--font-mono); font-size:9.5px; fill:var(--label-secondary); }
+svg .t-title { font-size:12px; font-weight:600; }
+svg .t-kicker { font-size:9px; font-weight:700; letter-spacing:.08em; }
+svg .edge { fill:none; stroke:var(--control-border); stroke-width:1.1; }
+svg .edge.dashed { stroke-dasharray:4 3; }
+svg .node { fill:var(--content-bg); stroke:var(--separator); stroke-width:1; }
+svg .node.alt { fill:var(--content-bg-alt); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div style="flex:1 1 420px">
+    <div class="kicker">research-buddy · system design</div>
+    <h1>The local model: a bundled engine, started for you</h1>
+    <p class="sub">How the app gets an OpenAI-compatible LLM endpoint running on a user's Mac without them installing, configuring, or ever seeing llama.cpp.</p>
+  </div>
+  <button class="theme-btn" id="theme" type="button">Toggle light / dark</button>
+</header>
+
+<p class="answer" id="answer">
+  <strong>Answer in one line:</strong> the engine is a <em>pinned, checksummed release asset bundled into the app</em>, the model is
+  fetched once into the app's cache, and llama.cpp runs as a <strong>supervised child process</strong> on loopback — so the app owns
+  its whole lifecycle, and the webview only ever reads a status event.
+</p>
+
+<div class="legend" style="margin-top:14px">
+  <span><i class="swatch" style="background:var(--blue)"></i> app process (Rust)</span>
+  <span><i class="swatch" style="background:var(--purple)"></i> child process</span>
+  <span><i class="swatch" style="background:var(--green)"></i> webview</span>
+  <span><i class="swatch" style="background:var(--gray)"></i> outside the app</span>
+  <span class="badge ok">verified against source</span>
+</div>
+
+<section id="topology">
+  <h2>1 · Who talks to whom</h2>
+  <p class="lede">The core relationship: one Rust process makes decisions, one C++ process does inference, and the only thing between them is argv on the way in and HTTP on the way out.</p>
+  <figure class="figure">
+    <svg viewBox="0 0 1040 520" width="100%" role="img" aria-labelledby="topo-title">
+      <title id="topo-title">Component topology of the local model feature</title>
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--control-border)"/>
+        </marker>
+        <marker id="ah-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--blue)"/>
+        </marker>
+        <marker id="ah-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--purple)"/>
+        </marker>
+        <marker id="ah-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--green)"/>
+        </marker>
+      </defs>
+
+      <!-- app process boundary -->
+      <g id="app-boundary">
+        <title>The Tauri app process: all decisions live here</title>
+        <rect x="300" y="34" width="400" height="322" rx="12" fill="var(--group-bg)" stroke="var(--blue)" stroke-width="1.2" stroke-dasharray="6 4"/>
+        <text x="316" y="54" class="t-kicker" fill="var(--blue)">TAURI APP PROCESS · RUST</text>
+      </g>
+
+      <!-- webview -->
+      <g id="node-webview">
+        <title>React webview: renders progress, never talks to the engine</title>
+        <rect class="node" x="28" y="72" width="204" height="72" rx="8" stroke="var(--green)" stroke-width="1.2"/>
+        <text x="44" y="98" class="t-title">Webview</text>
+        <text x="44" y="116" class="t-sm">ModelProgress.tsx</text>
+        <text x="44" y="131" class="t-xs">under the search bar</text>
+      </g>
+
+      <!-- LocalLlm / State -->
+      <g id="node-llm">
+        <title>LocalLlm handle and shared State: status, run id, busy flag, owned engine</title>
+        <rect class="node" x="326" y="72" width="348" height="72" rx="8" stroke="var(--blue)" stroke-width="1.2"/>
+        <text x="342" y="98" class="t-title">LocalLlm · State</text>
+        <text x="342" y="116" class="t-sm">run() = serve() then supervise()</text>
+        <text x="342" y="131" class="t-xs">status · run id · busy · owned engine</text>
+      </g>
+
+      <!-- seam -->
+      <g id="node-seam">
+        <title>The seam: trait Engine and trait Running, the only place effects enter the pipeline</title>
+        <rect x="326" y="164" width="348" height="58" rx="8" fill="var(--content-bg)" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="5 3"/>
+        <text x="342" y="188" class="t-title" fill="var(--accent)">the seam · engine.rs</text>
+        <text x="342" y="206" class="t-mono">trait Engine · trait Running</text>
+      </g>
+
+      <!-- model.rs -->
+      <g id="node-model">
+        <title>model.rs: hf-hub download, byte-progress folding, quant matching</title>
+        <rect class="node alt" x="326" y="242" width="162" height="80" rx="8"/>
+        <text x="342" y="268" class="t-title">model.rs</text>
+        <text x="342" y="286" class="t-sm">fetch the GGUF</text>
+        <text x="342" y="301" class="t-mono">snapshot_download</text>
+      </g>
+
+      <!-- server.rs -->
+      <g id="node-server">
+        <title>server.rs: resolve the bundled binary, spawn the child, poll /health, reap orphans</title>
+        <rect class="node alt" x="512" y="242" width="162" height="80" rx="8"/>
+        <text x="528" y="268" class="t-title">server.rs</text>
+        <text x="528" y="286" class="t-sm">spawn · probe · reap</text>
+        <text x="528" y="301" class="t-mono">tokio::process</text>
+      </g>
+
+      <!-- child -->
+      <g id="node-child">
+        <title>llama-server: a separate OS process running the C++ inference engine</title>
+        <rect x="812" y="196" width="200" height="108" rx="10" fill="var(--content-bg)" stroke="var(--purple)" stroke-width="1.4"/>
+        <text x="830" y="224" class="t-title" fill="var(--purple)">llama-server</text>
+        <text x="830" y="243" class="t-sm">child process · C++</text>
+        <text x="830" y="261" class="t-mono">127.0.0.1:&lt;ephemeral&gt;</text>
+        <text x="830" y="278" class="t-mono">Authorization: Bearer …</text>
+        <text x="830" y="294" class="t-xs">4 slots · one shared KV pool</text>
+      </g>
+
+      <!-- hub -->
+      <g id="node-hub">
+        <title>Hugging Face Hub: the only network the feature uses</title>
+        <rect class="node" x="28" y="242" width="204" height="80" rx="8" stroke="var(--gray)" stroke-width="1.1"/>
+        <text x="44" y="268" class="t-title">Hugging Face Hub</text>
+        <text x="44" y="286" class="t-sm">Qwen / Qwen3-8B-GGUF</text>
+        <text x="44" y="301" class="t-xs">Q4_K_M · Apache-2.0</text>
+      </g>
+
+      <!-- disk -->
+      <g id="node-disk">
+        <title>App-owned files on disk: model cache, engine bundle, engine log</title>
+        <rect class="node" x="330" y="392" width="380" height="98" rx="8" stroke="var(--gray)" stroke-width="1.1"/>
+        <text x="346" y="416" class="t-title">on disk · app-owned</text>
+        <text x="346" y="436" class="t-mono">~/Library/Caches/…/local-llm/models/…</text>
+        <text x="346" y="452" class="t-xs">the GGUF, once</text>
+        <text x="346" y="472" class="t-mono">…/Resources/binaries/llama/</text>
+        <text x="346" y="484" class="t-xs">engine + its dylibs, inside the bundle</text>
+      </g>
+
+      <!-- edges: webview <-> llm -->
+      <g id="edge-invoke">
+        <title>invoke("local_llm_status") and invoke("local_llm_retry")</title>
+        <path class="edge" d="M232 92 H330" marker-end="url(#ah-g)"/>
+        <text x="238" y="86" class="t-xs">invoke</text>
+      </g>
+      <g id="edge-event">
+        <title>The one event the webview listens to: local-llm://status</title>
+        <path class="edge" d="M326 128 H232" marker-end="url(#ah-g)"/>
+        <text x="238" y="143" class="t-xs">status event</text>
+      </g>
+
+      <!-- edges: inside app -->
+      <path id="edge-llm-seam" class="edge" d="M500 144 V164" marker-end="url(#ah-b)"/>
+      <path id="edge-seam-model" class="edge" d="M407 222 V242" marker-end="url(#ah-b)"/>
+      <path id="edge-seam-server" class="edge" d="M593 222 V242" marker-end="url(#ah-b)"/>
+
+      <!-- edges: external -->
+      <g id="edge-hub">
+        <title>HTTPS download of the quantised weights</title>
+        <path class="edge" d="M232 282 H326" marker-end="url(#ah)"/>
+        <text x="240" y="276" class="t-xs">HTTPS</text>
+      </g>
+      <g id="edge-cache-write">
+        <title>model.rs writes and re-reads the GGUF cache</title>
+        <path class="edge" d="M407 322 V392" marker-end="url(#ah)"/>
+        <text x="414" y="382" class="t-xs">GGUF</text>
+      </g>
+      <g id="edge-engine-read">
+        <title>server.rs reads the bundled engine and appends to the engine log</title>
+        <path class="edge" d="M593 322 V392" marker-end="url(#ah)"/>
+        <text x="600" y="382" class="t-xs">engine · log</text>
+      </g>
+      <g id="edge-exec">
+        <title>argv is the only configuration the child receives</title>
+        <path class="edge" d="M674 258 H812" marker-end="url(#ah-p)"/>
+        <text x="706" y="252" class="t-xs">exec + argv</text>
+      </g>
+      <g id="edge-http">
+        <title>HTTP on loopback: /health for readiness, /v1 for inference, bearer token required</title>
+        <path class="edge" d="M812 288 H674" marker-end="url(#ah)"/>
+        <text x="706" y="304" class="t-xs">/health · /v1</text>
+      </g>
+    </svg>
+    <figcaption>
+      Nothing outside the app process can reach the engine except over loopback with the bearer token
+      <code>local-&lt;pid&gt;</code> (<code>src-tauri/src/local_llm/server.rs:88</code>): <code>GET /health</code> for readiness,
+      <code>POST /v1/…</code> for inference. The webview never sees that token — it only listens to
+      <code>local-llm://status</code> (<code>src/ModelProgress.tsx:64</code>). The dashed box is the
+      <em>seam</em>: <code>trait Engine</code> and <code>trait Running</code> are the only effects the pipeline can perform,
+      which is why the whole lifecycle is testable without a network or a subprocess.
+    </figcaption>
+  </figure>
+</section>
+
+<section id="startup">
+  <h2>2 · What happens between launch and a usable endpoint</h2>
+  <p class="lede">One async job, six published phases. Every arrow below is a status event the webview actually receives.</p>
+  <figure class="figure">
+    <svg viewBox="0 0 1040 268" width="100%" role="img" aria-labelledby="seq-title">
+      <title id="seq-title">Startup phase sequence from idle to running, with the failure divert</title>
+      <g id="phase-lane">
+        <title>The happy path</title>
+        <text x="12" y="26" class="t-kicker" fill="var(--label-tertiary)">PUBLISHED PHASES · ONE JOB</text>
+      </g>
+
+      <g id="phase-idle">
+        <title>idle: nothing asked for yet</title>
+        <rect class="node" x="12" y="44" width="152" height="46" rx="7"/>
+        <text x="26" y="66" class="t-title">idle</text>
+        <text x="26" y="81" class="t-xs">app launched</text>
+      </g>
+      <g id="phase-downloading">
+        <title>downloading: hf-hub reports bytes, folded into one monotonic counter</title>
+        <rect class="node" x="188" y="44" width="152" height="46" rx="7" stroke="var(--blue)"/>
+        <text x="202" y="66" class="t-title">downloading</text>
+        <text x="202" y="81" class="t-xs">bytes · throttled 250 ms</text>
+      </g>
+      <g id="phase-ready">
+        <title>ready: the GGUF is on disk, nothing spawned yet</title>
+        <rect class="node" x="364" y="44" width="152" height="46" rx="7" stroke="var(--blue)"/>
+        <text x="378" y="66" class="t-title">ready</text>
+        <text x="378" y="81" class="t-xs">model on disk</text>
+      </g>
+      <g id="phase-starting">
+        <title>starting: child spawned, loading weights, /health answers 503</title>
+        <rect class="node" x="540" y="44" width="152" height="46" rx="7" stroke="var(--blue)"/>
+        <text x="554" y="66" class="t-title">starting</text>
+        <text x="554" y="81" class="t-xs">/health → 503 still</text>
+      </g>
+      <g id="phase-running">
+        <title>running: /health answered 200 and the endpoint is published</title>
+        <rect x="716" y="44" width="152" height="46" rx="7" fill="var(--content-bg)" stroke="var(--green)" stroke-width="1.4"/>
+        <text x="730" y="66" class="t-title" fill="var(--green-text)">running</text>
+        <text x="730" y="81" class="t-mono">127.0.0.1:PORT/v1</text>
+      </g>
+      <g id="phase-watched">
+        <title>After running, the supervisor keeps watching for 2s-interval exits</title>
+        <rect x="892" y="44" width="136" height="46" rx="7" fill="var(--group-bg)" stroke="var(--green)" stroke-dasharray="5 3"/>
+        <text x="906" y="66" class="t-title">watched</text>
+        <text x="906" y="81" class="t-xs">poll every 2 s</text>
+      </g>
+
+      <path class="edge" d="M164 67 H188" marker-end="url(#ah)"/>
+      <path class="edge" d="M340 67 H364" marker-end="url(#ah)"/>
+      <path class="edge" d="M516 67 H540" marker-end="url(#ah)"/>
+      <path class="edge" d="M692 67 H716" marker-end="url(#ah-b)"/>
+      <path class="edge dashed" d="M868 67 H892" marker-end="url(#ah)"/>
+
+      <!-- work under each phase -->
+      <g id="work-locate">
+        <title>locate: resolve the bundled engine and sweep for orphans, before any download</title>
+        <rect class="node alt" x="12" y="120" width="152" height="66" rx="7"/>
+        <text x="26" y="142" class="t-sm">locate engine</text>
+        <text x="26" y="158" class="t-xs">bundle only, no PATH</text>
+        <text x="26" y="174" class="t-xs">reap orphans first</text>
+      </g>
+      <path class="edge dashed" d="M88 90 V120" marker-end="url(#ah)"/>
+
+      <g id="work-download">
+        <title>prepare: hf-hub snapshot_download with a byte reporter</title>
+        <rect class="node alt" x="188" y="120" width="152" height="66" rx="7"/>
+        <text x="202" y="142" class="t-sm">snapshot_download</text>
+        <text x="202" y="158" class="t-xs">*Q4_K_M*.gguf</text>
+        <text x="202" y="174" class="t-xs">monotonic bytes</text>
+      </g>
+      <path class="edge dashed" d="M264 90 V120" marker-end="url(#ah)"/>
+
+      <g id="work-retire">
+        <title>Before spawning, the previous engine is retired: two loads of one 5 GB model is an OOM path</title>
+        <rect class="node alt" x="364" y="120" width="152" height="66" rx="7"/>
+        <text x="378" y="142" class="t-sm">retire old engine</text>
+        <text x="378" y="158" class="t-xs">one model in RAM</text>
+        <text x="378" y="174" class="t-xs">at a time</text>
+      </g>
+      <path class="edge dashed" d="M440 90 V120" marker-end="url(#ah)"/>
+
+      <g id="work-spawn">
+        <title>spawn with argv, output to a file, probe /health until 200 within 180s</title>
+        <rect class="node alt" x="540" y="120" width="152" height="66" rx="7"/>
+        <text x="554" y="142" class="t-sm">spawn + probe</text>
+        <text x="554" y="158" class="t-xs">stdout → log file</text>
+        <text x="554" y="174" class="t-xs">200 only · 180 s</text>
+      </g>
+      <path class="edge dashed" d="M616 90 V120" marker-end="url(#ah)"/>
+
+      <g id="work-publish">
+        <title>publish the endpoint; the supersede check happens just before this</title>
+        <rect class="node alt" x="716" y="120" width="152" height="66" rx="7"/>
+        <text x="730" y="142" class="t-sm">publish endpoint</text>
+        <text x="730" y="158" class="t-xs">run id re-checked</text>
+        <text x="730" y="174" class="t-xs">then store handle</text>
+      </g>
+      <path class="edge dashed" d="M792 90 V120" marker-end="url(#ah)"/>
+
+      <!-- failure divert -->
+      <g id="phase-failed">
+        <title>failed: every failure publishes a sentence and clears the endpoint</title>
+        <rect x="12" y="212" width="856" height="44" rx="7" fill="var(--group-bg)" stroke="var(--red)" stroke-width="1.1"/>
+        <text x="28" y="234" class="t-title" fill="var(--red-text)">failed</text>
+        <text x="86" y="234" class="t-sm">endpoint cleared · message set · the app still launched, and Retry re-runs the job</text>
+        <text x="28" y="249" class="t-xs">engine missing · download failed · child exited early · never answered /health · child died later</text>
+      </g>
+      <path class="edge dashed" d="M88 186 V212" stroke="var(--red)" marker-end="url(#ah)"/>
+      <path class="edge dashed" d="M264 186 V212" stroke="var(--red)" marker-end="url(#ah)"/>
+      <path class="edge dashed" d="M616 186 V212" stroke="var(--red)" marker-end="url(#ah)"/>
+      <path class="edge dashed" d="M960 90 V234 H868" stroke="var(--red)" marker-end="url(#ah)"/>
+    </svg>
+    <figcaption>
+      Two ordering rules are load-bearing. The engine is resolved <em>before</em> the download — fetching gigabytes the app
+      cannot run is the worst use of the user's bandwidth. And <code>503</code> is deliberately <strong>not</strong> readiness:
+      while weights load, llama.cpp answers <code>503 "Loading model"</code>, so accepting it would advertise a model that
+      rejects every request.
+    </figcaption>
+  </figure>
+</section>
+
+<section id="ownership">
+  <h2>3 · Who owns the child process</h2>
+  <p class="lede">A llama-server holding 5 GB of weights is expensive to leak. Four ways it can go wrong, and the guard for each. This is where review found three real bugs.</p>
+  <figure class="figure">
+    <svg viewBox="0 0 1040 250" width="100%" role="img" aria-labelledby="own-title">
+      <title id="own-title">Four lifecycle hazards and the guard that covers each</title>
+
+      <g id="hazard-rerun">
+        <title>A newer run retires the engine the previous run started</title>
+        <rect class="node" x="8" y="24" width="242" height="196" rx="10"/>
+        <text x="26" y="50" class="t-kicker" fill="var(--accent)">RETRY / SECOND RUN</text>
+        <rect class="node alt" x="28" y="66" width="96" height="40" rx="6" stroke="var(--purple)"/>
+        <text x="40" y="90" class="t-xs">engine #1</text>
+        <rect x="134" y="66" width="96" height="40" rx="6" fill="var(--content-bg)" stroke="var(--purple)" stroke-width="1.4"/>
+        <text x="146" y="90" class="t-xs">engine #2</text>
+        <path class="edge" d="M124 86 H134" marker-end="url(#ah-p)"/>
+        <text x="28" y="132" class="t-sm">retire_server() before</text>
+        <text x="28" y="147" class="t-sm">every spawn</text>
+        <text x="28" y="176" class="t-xs">guard: the run id is bumped,</text>
+        <text x="28" y="191" class="t-xs">so run #1's supervisor</text>
+        <text x="28" y="206" class="t-xs">can no longer touch it</text>
+      </g>
+
+      <g id="hazard-crash">
+        <title>An engine that dies after readiness becomes a visible failure</title>
+        <rect class="node" x="266" y="24" width="242" height="196" rx="10"/>
+        <text x="284" y="50" class="t-kicker" fill="var(--orange-text)">CRASH AFTER READY</text>
+        <rect class="node alt" x="286" y="66" width="96" height="40" rx="6" stroke="var(--red)"/>
+        <text x="298" y="90" class="t-xs">engine died</text>
+        <path class="edge" d="M382 86 H412" marker-end="url(#ah)"/>
+        <rect x="412" y="66" width="78" height="40" rx="6" fill="var(--group-bg)" stroke="var(--red)"/>
+        <text x="422" y="90" class="t-xs">failed</text>
+        <text x="286" y="132" class="t-sm">supervise() polls the child</text>
+        <text x="286" y="147" class="t-sm">every 2 s</text>
+        <text x="286" y="176" class="t-xs">poll, take and terminate in</text>
+        <text x="286" y="191" class="t-xs">one lock, so a stale run</text>
+        <text x="286" y="206" class="t-xs">cannot kill a live engine</text>
+      </g>
+
+      <g id="hazard-shutdown">
+        <title>An engine that arrives after shutdown is stopped immediately</title>
+        <rect class="node" x="524" y="24" width="242" height="196" rx="10"/>
+        <text x="542" y="50" class="t-kicker" fill="var(--red-text)">QUIT WHILE STARTING</text>
+        <rect class="node alt" x="544" y="66" width="96" height="40" rx="6" stroke="var(--purple)"/>
+        <text x="556" y="90" class="t-xs">spawn lands</text>
+        <path class="edge" d="M640 86 H670" marker-end="url(#ah)"/>
+        <rect x="670" y="66" width="78" height="40" rx="6" fill="var(--group-bg)" stroke="var(--red)"/>
+        <text x="682" y="90" class="t-xs">killed</text>
+        <text x="544" y="132" class="t-sm">shutdown() bumps the</text>
+        <text x="544" y="147" class="t-sm">run id, then serve()</text>
+        <text x="544" y="176" class="t-xs">checks it before handing</text>
+        <text x="544" y="191" class="t-xs">over the handle — nothing</text>
+        <text x="544" y="206" class="t-xs">else could reach it</text>
+      </g>
+
+      <g id="hazard-orphan">
+        <title>A SIGKILLed app leaves an orphan; the next launch reaps it</title>
+        <rect class="node" x="782" y="24" width="250" height="196" rx="10"/>
+        <text x="800" y="50" class="t-kicker" fill="var(--purple)">SIGKILL LEFTOVER</text>
+        <rect class="node alt" x="802" y="66" width="96" height="40" rx="6" stroke="var(--purple)"/>
+        <text x="814" y="90" class="t-xs">ppid = 1</text>
+        <path class="edge" d="M898 86 H928" marker-end="url(#ah)"/>
+        <rect x="928" y="66" width="86" height="40" rx="6" fill="var(--group-bg)" stroke="var(--gray)"/>
+        <text x="938" y="90" class="t-xs">next launch</text>
+        <text x="802" y="132" class="t-sm">ps -Ao</text>
+        <text x="802" y="147" class="t-sm">pid=,ppid=,args=</text>
+        <text x="802" y="162" class="t-xs">in spawn_blocking</text>
+        <text x="802" y="176" class="t-xs">only ppid 1 + our bundle path,</text>
+        <text x="802" y="191" class="t-xs">so another instance's</text>
+        <text x="802" y="206" class="t-xs">engine is never touched</text>
+      </g>
+    </svg>
+    <figcaption>
+      A monotonic <strong>run id</strong> is the single mechanism: <code>serve()</code> claims one, <code>shutdown()</code> and every
+      new run bump it, and any actor holding a stale id stops. Signals are handled too — <code>SIGTERM</code> and
+      <code>SIGINT</code> call <code>app.exit(0)</code> so the child dies with the app (<code>src-tauri/src/lib.rs</code>),
+      because a signal-killed process runs no destructors and <code>kill_on_drop</code> never fires.
+    </figcaption>
+  </figure>
+</section>
+
+<section id="modules">
+  <h2>4 · Module map</h2>
+  <p class="lede">Six files, each with one job. The seam is what makes the other five testable.</p>
+  <div class="grid g3">
+    <div class="tile" id="mod-mod">
+      <span class="kicker">local_llm/mod.rs</span>
+      <h3>The pipeline</h3>
+      <p><code>run()</code> = <code>serve()</code> then <code>supervise()</code>, or one published failure. Owns <code>LlmStatus</code>, the run id, the busy flag, and the single owned engine handle.</p>
+    </div>
+    <div class="tile" id="mod-engine">
+      <span class="kicker">local_llm/engine.rs</span>
+      <h3>The seam</h3>
+      <p><code>trait Engine</code> (locate / prepare / start) and <code>trait Running</code> (endpoint / poll_exit / log_tail / terminate). <code>LiveEngine</code> binds them to reality; tests bind them to a script.</p>
+    </div>
+    <div class="tile" id="mod-server">
+      <span class="kicker">local_llm/server.rs</span>
+      <h3>The process</h3>
+      <p>Builds argv, resolves the bundled binary, spawns, probes <code>/health</code>, tails the log, reaps orphans. Output goes to a file — a full pipe would block the child.</p>
+    </div>
+    <div class="tile" id="mod-model">
+      <span class="kicker">local_llm/model.rs</span>
+      <h3>The weights</h3>
+      <p>hf-hub <code>snapshot_download</code>, recursive GGUF discovery, case-insensitive quant match, and a reporter that folds per-file and xet progress into one increasing count.</p>
+    </div>
+    <div class="tile" id="mod-provision">
+      <span class="kicker">scripts/provision-llama.mjs</span>
+      <h3>The bundle</h3>
+      <p>Downloads a pinned asset, verifies sha256, copies <code>llama-server</code> plus every <code>@rpath</code> dylib, rebuilds symlinks, stages into <code>DEST.new</code> and renames atomically.</p>
+    </div>
+    <div class="tile" id="mod-ui">
+      <span class="kicker">src/ModelProgress.tsx</span>
+      <h3>The surface</h3>
+      <p>Listens, then reads the snapshot so a late mount still sees progress. Renders a bar, an indeterminate sweep, a failure with Retry, or nothing at all when running.</p>
+    </div>
+  </div>
+</section>
+
+<section id="contract">
+  <h2>5 · The only contract the webview depends on</h2>
+  <p class="lede">One event, one shape. <code>local-llm://status</code> is emitted by <code>TauriEvents</code>, which exists so the pipeline never holds an <code>AppHandle</code>.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>field</th><th>type</th><th>what the UI does with it</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">phase</td><td>idle · downloading · ready · starting · running · failed</td><td>keys the whole layout; a phase change always bypasses the 250 ms throttle</td></tr>
+        <tr><td class="mono">downloadedBytes</td><td>u64</td><td>bar value; monotonic, so a late hf-hub event cannot rewind it</td></tr>
+        <tr><td class="mono">totalBytes</td><td>u64</td><td>bar max; 0 until the Hub reports a size</td></tr>
+        <tr><td class="mono">endpoint</td><td>string · null</td><td>set only when <code>/health</code> answered 200; cleared on every failure</td></tr>
+        <tr><td class="mono">message</td><td>string · null</td><td>the failure sentence; a straggler progress event must not erase it</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="decisions">
+  <h2>6 · Decisions worth arguing about</h2>
+  <p class="lede">Each of these was chosen against a plausible alternative. Annotate any you disagree with.</p>
+  <div class="grid g2">
+    <div class="tile" id="d-subprocess">
+      <span class="kicker">subprocess, not in-process bindings</span>
+      <h3>llama-server over HTTP</h3>
+      <p>llama.cpp decodes one batch per context. The server's slot scheduler is what turns "summarise four pages" into four concurrent sequences, and a crash in the C++ backend then costs a restart rather than the window.</p>
+    </div>
+    <div class="tile" id="d-nopath">
+      <span class="kicker">no PATH fallback</span>
+      <h3>The bundle or nothing</h3>
+      <p>A stray system <code>llama-server</code> is usually older and rejects <code>-kvu</code> / <code>--kv-unified-per-slot</code>. Finding one would turn a broken bundle into a confusing startup failure. The error says "reinstall", never "install a tool".</p>
+    </div>
+    <div class="tile" id="d-pin">
+      <span class="kicker">pinned tag + sha256</span>
+      <h3>b11856, 16 244 700 bytes</h3>
+      <p>"Whatever is newest" cannot reach a build. The digest catches a truncated or tampered asset. Other platforms fail loudly with instructions instead of guessing an asset name.</p>
+    </div>
+    <div class="tile" id="d-kv">
+      <span class="kicker">-np 4 -kvu --kv-unified-per-slot 8192</span>
+      <h3>Four slots, one KV pool</h3>
+      <p>With an explicit slot count and no <code>-kvu</code>, llama.cpp gives each slot a private KV buffer, so a shared prompt is never reused across concurrent requests. Verified against the real binary: <code>-np 4</code> alone reports <code>kv_unified = false</code>.</p>
+    </div>
+    <div class="tile" id="d-thinking">
+      <span class="kicker">--chat-template-kwargs</span>
+      <h3>Thinking mode off</h3>
+      <p><code>{"enable_thinking": false}</code>. A page summary should not pay for a chain of thought before every answer.</p>
+    </div>
+    <div class="tile" id="d-model">
+      <span class="kicker">Qwen3-8B · Q4_K_M</span>
+      <h3>Apache-2.0, ungated</h3>
+      <p>Chosen over Gemma 3n E4B: no gating, mature GGUF support, no PLE/AltUp complexity — the safer thing to ship inside an app.</p>
+    </div>
+  </div>
+</section>
+
+<section id="outofscope">
+  <h2>7 · Deliberately not here yet</h2>
+  <div class="grid g3">
+    <div class="tile" id="gap-wire">
+      <span class="badge info">next</span>
+      <h3 style="margin-top:8px">Nothing calls the endpoint</h3>
+      <p>The search bar and the engine are not connected. <code>BuddyAgent::with_endpoint(api_key, base_url, model, preamble)</code> in <code>src/agent/mod.rs</code> already speaks OpenAI-compatible HTTP, so it is a wiring job, not a new abstraction.</p>
+    </div>
+    <div class="tile" id="gap-secret">
+      <span class="badge warn">open question</span>
+      <h3 style="margin-top:8px">Where does the bearer token go?</h3>
+      <p>The key is <code>local-&lt;pid&gt;</code> and is deliberately absent from <code>LlmStatus</code> — a status event is not a place for a secret. When the agent is wired up, how does it get the key without going through the webview?</p>
+    </div>
+    <div class="tile" id="gap-sign">
+      <span class="badge no">pre-existing</span>
+      <h3 style="margin-top:8px">Signing, and other platforms</h3>
+      <p>The built app is adhoc-signed with no team id, and fails <code>codesign --verify</code> identically with the engine removed. Windows and Linux have no pin entry, so provisioning refuses rather than guesses.</p>
+    </div>
+  </div>
+</section>
+
+<section id="evidence">
+  <h2>8 · What is verified, and how</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>claim</th><th>evidence</th></tr></thead>
+      <tbody>
+        <tr><td>The app reaches a serving endpoint on a real machine</td><td class="mono">dev run logged “local model serving on http://127.0.0.1:63528/v1”</td></tr>
+        <tr><td>SIGTERM reaps the child</td><td class="mono">pgrep -fl binaries/llama/llama-server → no process</td></tr>
+        <tr><td>The bundled engine serves and authenticates</td><td class="mono">cargo test -- --ignored → 200 with bearer, 401 without</td></tr>
+        <tr><td>The lifecycle is covered without a network</td><td class="mono">44 passed · 1 ignored · clippy clean in local_llm</td></tr>
+        <tr><td>Only 200 means ready; -kvu is required; the reaper is narrow</td><td class="mono">decisions_test.rs · tests.rs</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede" style="margin-top:12px">Anything on this page not backed by that table is inference, and is labelled as one.</p>
+</section>
+
+</div>
+<script>
+  const root = document.documentElement;
+  document.getElementById('theme').addEventListener('click', () => {
+    const dark = getComputedStyle(root).backgroundColor && matchMedia('(prefers-color-scheme: dark)').matches;
+    const explicit = root.getAttribute('data-theme');
+    const isDark = explicit ? explicit === 'dark' : dark;
+    root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  });
+</script>
+</body>
+</html>

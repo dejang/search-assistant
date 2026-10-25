@@ -8,23 +8,39 @@ valid:
         let _ = 1;
     }
   - |
-    /// Module documentation is outside the plain three-line limit.
+    /// one
     ///
-    /// It carries its own limit in doc-comment-over-5-lines.
+    /// three
     fn probe() {}
   - |
-    /// A doc comment outside a function body breaks the run: it states a contract.
-    // plain one
-    // plain two
-    // plain three
+    //! one
+    //! two
+    //! three
+    use std::io;
+  - |
+    /* one
+       two
+       three */
     fn probe() {}
   - |
-    fn probe() {
-        // two plain lines and a doc line stay inside the limit
-        // as well
-        /// a doc line
-        let _ = 1;
-    }
+    /** one
+        two
+        three */
+    fn probe() {}
+  - |
+    // one
+    /// two
+    /* three */
+    fn probe() {}
+  - |
+    // one
+    // two
+    // three
+    fn probe() {}
+    // four
+    // five
+    // six
+    fn other() {}
 invalid:
   - |
     fn probe() {
@@ -35,28 +51,94 @@ invalid:
         let _ = 1;
     }
   - |
-    fn probe() {
-        // one
+    /// one
+    /// two
+    /// three
+    /// four
+    fn probe() {}
+  - |
+    //! one
+    //! two
+    //! three
+    //! four
+    use std::io;
+  - |
+    /// One line of prose and a doctest.
+    ///
+    /// ```
+    /// let _ = 1;
+    /// ```
+    fn probe() {}
+  - |
+    /// One line of prose.
+    ///
+    /// # Errors
+    /// Fails on empty input.
+    fn probe() {}
+  - |
+    /* one
+       two
+       three
+       four */
+    fn probe() {}
+  - |
+    /** one
+        two
+        three
+        four */
+    fn probe() {}
+  - |
+    /*! one
+        two
+        three
+        four */
+    use std::io;
+  - |
+    // one
+    /// two
+    /* three */
+    //! four
+    fn probe() {}
+  - |
+    /* one
+       two */
+    // three
+    // four
+    fn probe() {}
+  - |
+    // one
+    // two
+    /* three
+       four */
+    fn probe() {}
+  - |
+    // one
+    // two
+    // three
+
+    // four
+    fn probe() {}
+  - |
+    /// one
+    /// two
+    #[derive(Debug)]
+    #[allow(dead_code)]
+    // three
+    // four
+    struct Probe;
+  - |
+    impl Probe {
+        /// one
+        /// two
+        /// three
+        /// four
+        fn probe(&self) {}
+    }
+  - |
+    struct Probe {
+        a: u8, // one
         // two
         // three
         // four
-        // five
-        let _ = 1;
-    }
-  - |
-    fn probe() {
-        // plain one
-        // plain two
-        /// a doc line does not split a run inside a body
-        // plain three
-        // plain four
-        let _ = 1;
-    }
-  - |
-    fn probe() {
-        /// four doc lines inside a body document no API, so they
-        /// count toward the limit like any other comment line and
-        /// a run of four of them is reported here
-        /// as this fourth line completes
-        let _ = 1;
+        b: u8,
     }

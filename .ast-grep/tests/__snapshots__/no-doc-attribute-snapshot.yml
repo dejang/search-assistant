@@ -1,0 +1,30 @@
+id: no-doc-attribute
+snapshots:
+  "#![doc = include_str!(\"../README.md\")]\n":
+    labels:
+    - source: "#![doc = include_str!(\"../README.md\")]"
+      style: primary
+      start: 0
+      end: 38
+  "#[cfg_attr(docsrs, doc = \"Hidden from the comment rules.\")]\nfn probe() {}\n":
+    labels:
+    - source: "#[cfg_attr(docsrs, doc = \"Hidden from the comment rules.\")]"
+      style: primary
+      start: 0
+      end: 59
+  "#[doc = \"Hidden from the comment rules.\"]\nfn probe() {}\n":
+    labels:
+    - source: "#[doc = \"Hidden from the comment rules.\"]"
+      style: primary
+      start: 0
+      end: 41
+  "macro_rules! probe {\n    () => {\n        #[doc = \"Hidden from the comment rules.\"]\n        fn probe() {}\n    };\n}\n":
+    labels:
+    - source: |-
+        {
+                #[doc = "Hidden from the comment rules."]
+                fn probe() {}
+            }
+      style: primary
+      start: 31
+      end: 110

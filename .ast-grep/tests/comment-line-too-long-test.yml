@@ -6,6 +6,11 @@ valid:
         /// a doc comment of exactly ninety-six characters is allowed and this line is that exact width.
         let _ = 1;
     }
+  - |
+    fn probe() {
+        /* a block comment line of exactly ninety-six characters is allowed and this line is that wide*/
+        let _ = 1;
+    }
 invalid:
   - |
     fn probe() {
@@ -15,3 +20,15 @@ invalid:
   - |
     /// a doc comment of exactly ninety-seven characters is over the cap and this line is that exact.
     fn probe() {}
+  - |
+    fn probe() {
+        /* a block comment line of exactly ninety-seven characters is over the cap and the line's wide */
+        let _ = 1;
+    }
+  - |
+    fn probe() {
+        /* short first line
+           the second line of a block comment is measured from its first non-space character, and it's over.
+        */
+        let _ = 1;
+    }

@@ -1,8 +1,6 @@
 id: comment-max-two-lines-ts
 language: TypeScript
 severity: error
-ignores:
-  - agents/**
 message: "Avoid narrative comments about implementation details, assumed callers, or reasons for the chosen implementation. Limit an implementation comment to at most two lines. Document API parameters, return values, and error cases as concise statements of the API's own guarantees."
 rule:
   # Matches the first comment of a run of adjacent comments whose lines add
@@ -25,32 +23,37 @@ rule:
 id: comment-max-two-lines-tsx
 language: Tsx
 severity: error
-ignores:
-  - agents/**
 message: "Avoid narrative comments about implementation details, assumed callers, or reasons for the chosen implementation. Limit an implementation comment to at most two lines. Document API parameters, return values, and error cases as concise statements of the API's own guarantees."
+utils:
+  jsx-comment:
+    kind: jsx_expression
+    regex: '^\{\s*(/\*[^*]*\*+([^/*][^*]*\*+)*/\s*|//[^\n]*\n\s*)+\}$'
+  cmt:
+    any:
+      - kind: comment
+        not: {inside: {matches: jsx-comment}}
+      - matches: jsx-comment
 rule:
   # Matches the first comment of a run of adjacent comments whose lines add
-  # up to three or more. Blank lines are not nodes, so they do not split a run.
-  kind: comment
+  # up to three or more. Blank lines do not split a run; `{/* */}` is a comment.
+  matches: cmt
   not:
-    follows: { kind: comment, stopBy: neighbor }
+    follows: { matches: cmt, stopBy: neighbor }
   any:
     - regex: '\n[^\n]*\n'
     - all:
         - regex: '\n'
-        - precedes: { kind: comment, stopBy: neighbor }
+        - precedes: { matches: cmt, stopBy: neighbor }
     - precedes:
-        kind: comment
+        matches: cmt
         stopBy: neighbor
         any:
           - regex: '\n'
-          - precedes: { kind: comment, stopBy: neighbor }
+          - precedes: { matches: cmt, stopBy: neighbor }
 ---
 id: comment-max-two-lines-js
 language: JavaScript
 severity: error
-ignores:
-  - agents/**
 message: "Avoid narrative comments about implementation details, assumed callers, or reasons for the chosen implementation. Limit an implementation comment to at most two lines. Document API parameters, return values, and error cases as concise statements of the API's own guarantees."
 rule:
   # Matches the first comment of a run of adjacent comments whose lines add
@@ -73,8 +76,6 @@ rule:
 id: comment-max-width-ts
 language: TypeScript
 severity: error
-ignores:
-  - agents/**
 message: "Keep each comment line within 100 characters, counted from its first non-space character. Cut words instead of widening the line."
 rule:
   kind: comment
@@ -83,8 +84,6 @@ rule:
 id: comment-max-width-tsx
 language: Tsx
 severity: error
-ignores:
-  - agents/**
 message: "Keep each comment line within 100 characters, counted from its first non-space character. Cut words instead of widening the line."
 rule:
   kind: comment
@@ -93,8 +92,6 @@ rule:
 id: comment-max-width-js
 language: JavaScript
 severity: error
-ignores:
-  - agents/**
 message: "Keep each comment line within 100 characters, counted from its first non-space character. Cut words instead of widening the line."
 rule:
   kind: comment

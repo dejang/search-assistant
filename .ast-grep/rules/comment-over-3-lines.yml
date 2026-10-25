@@ -1,72 +1,65 @@
 id: comment-over-3-lines
 language: rust
 severity: error
-message: "Implementation comment is longer than three lines; redesign instead of explaining (apply-style: Comments and API documentation)."
-# Every comment line inside a run of four or more plain comments is reported, so an edit
-# anywhere in an over-long run lands on a changed line. Doc comments (`///`, `//!`) are
-# not matched here: they state API contracts and carry their own, longer limit in
-# doc-comment-over-5-lines, except inside a function body, where they cannot document an
-# API and so count toward this run and cannot be used to break a run in half.
-#
-# Known limitation, do not re-derive it: `follows`/`precedes` walk sibling nodes and a
-# blank line is trivia, not a node, so `// a // b`, blank, `// c // d` reads as one run
-# of four. No rule predicate can see the blank line, so this is not fixable in YAML.
+message: "Comment run is longer than three lines; redesign instead of explaining (apply-style: Comments and API documentation)."
+# Every comment kind counts, and a run spans blank lines and attributes. Every line of
+# a block comment counts. `lines-N` ignores the newline a doc comment's text ends with.
 utils:
-  plain:
-    kind: line_comment
-    regex: '^//[^/!]'
-  anyline:
-    kind: line_comment
-  before-1:
-    matches: plain
-    follows: {matches: plain}
-  before-2:
-    matches: plain
-    follows: {matches: plain, follows: {matches: plain}}
-  before-3:
-    matches: plain
-    follows: {matches: plain, follows: {matches: plain, follows: {matches: plain}}}
-  after-1:
-    matches: plain
-    precedes: {matches: plain}
-  after-2:
-    matches: plain
-    precedes: {matches: plain, precedes: {matches: plain}}
-  after-3:
-    matches: plain
-    precedes: {matches: plain, precedes: {matches: plain, precedes: {matches: plain}}}
-  body-before-1:
-    matches: anyline
-    follows: {matches: anyline}
-  body-before-2:
-    matches: anyline
-    follows: {matches: anyline, follows: {matches: anyline}}
-  body-before-3:
-    matches: anyline
-    follows: {matches: anyline, follows: {matches: anyline, follows: {matches: anyline}}}
-  body-after-1:
-    matches: anyline
-    precedes: {matches: anyline}
-  body-after-2:
-    matches: anyline
-    precedes: {matches: anyline, precedes: {matches: anyline}}
-  body-after-3:
-    matches: anyline
-    precedes: {matches: anyline, precedes: {matches: anyline, precedes: {matches: anyline}}}
+  comment:
+    any: [{kind: line_comment}, {kind: block_comment}]
+  barrier:
+    not: {any: [{kind: attribute_item}, {kind: inner_attribute_item}]}
+  lines-2: {regex: '\n[\s\S]'}
+  lines-3: {regex: '\n[\s\S]*\n[\s\S]'}
+  lines-4: {regex: '\n[\s\S]*\n[\s\S]*\n[\s\S]'}
+  fwd-1: {matches: comment}
+  fwd-2:
+    matches: comment
+    any:
+      - matches: lines-2
+      - precedes: {matches: fwd-1, stopBy: {matches: barrier}}
+  fwd-3:
+    matches: comment
+    any:
+      - matches: lines-3
+      - all:
+          - matches: lines-2
+          - precedes: {matches: fwd-1, stopBy: {matches: barrier}}
+      - precedes: {matches: fwd-2, stopBy: {matches: barrier}}
+  fwd-4:
+    matches: comment
+    any:
+      - matches: lines-4
+      - all:
+          - matches: lines-3
+          - precedes: {matches: fwd-1, stopBy: {matches: barrier}}
+      - all:
+          - matches: lines-2
+          - precedes: {matches: fwd-2, stopBy: {matches: barrier}}
+      - precedes: {matches: fwd-3, stopBy: {matches: barrier}}
+  bwd-1: {matches: comment}
+  bwd-2:
+    matches: comment
+    any:
+      - matches: lines-2
+      - follows: {matches: bwd-1, stopBy: {matches: barrier}}
+  bwd-3:
+    matches: comment
+    any:
+      - matches: lines-3
+      - all:
+          - matches: lines-2
+          - follows: {matches: bwd-1, stopBy: {matches: barrier}}
+      - follows: {matches: bwd-2, stopBy: {matches: barrier}}
 rule:
-  kind: line_comment
   any:
+    - matches: fwd-4
     - all:
-        - matches: plain
-        - any:
-            - matches: before-3
-            - all: [{matches: before-2}, {matches: after-1}]
-            - all: [{matches: before-1}, {matches: after-2}]
-            - matches: after-3
+        - matches: fwd-3
+        - follows: {matches: bwd-1, stopBy: {matches: barrier}}
     - all:
-        - inside: {kind: function_item, stopBy: end}
-        - any:
-            - matches: body-before-3
-            - all: [{matches: body-before-2}, {matches: body-after-1}]
-            - all: [{matches: body-before-1}, {matches: body-after-2}]
-            - matches: body-after-3
+        - matches: fwd-2
+        - follows: {matches: bwd-2, stopBy: {matches: barrier}}
+    - all:
+        - matches: fwd-1
+        - follows: {matches: bwd-3, stopBy: {matches: barrier}}

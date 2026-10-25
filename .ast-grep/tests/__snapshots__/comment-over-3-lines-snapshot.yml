@@ -1,5 +1,213 @@
 id: comment-over-3-lines
 snapshots:
+  "/* one\n   two\n   three\n   four */\nfn probe() {}\n":
+    labels:
+    - source: |-
+        /* one
+           two
+           three
+           four */
+      style: primary
+      start: 0
+      end: 33
+  "/* one\n   two */\n// three\n// four\nfn probe() {}\n":
+    labels:
+    - source: |-
+        /* one
+           two */
+      style: primary
+      start: 0
+      end: 16
+    - source: // four
+      style: secondary
+      start: 26
+      end: 33
+    - source: // three
+      style: secondary
+      start: 17
+      end: 25
+  "/*! one\n    two\n    three\n    four */\nuse std::io;\n":
+    labels:
+    - source: |-
+        /*! one
+            two
+            three
+            four */
+      style: primary
+      start: 0
+      end: 37
+  "/** one\n    two\n    three\n    four */\nfn probe() {}\n":
+    labels:
+    - source: |-
+        /** one
+            two
+            three
+            four */
+      style: primary
+      start: 0
+      end: 37
+  "// one\n// two\n/* three\n   four */\nfn probe() {}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 0
+      end: 6
+    - source: |-
+        /* three
+           four */
+      style: secondary
+      start: 14
+      end: 33
+    - source: // two
+      style: secondary
+      start: 7
+      end: 13
+  "// one\n// two\n// three\n\n// four\nfn probe() {}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 0
+      end: 6
+    - source: // four
+      style: secondary
+      start: 24
+      end: 31
+    - source: // three
+      style: secondary
+      start: 14
+      end: 22
+    - source: // two
+      style: secondary
+      start: 7
+      end: 13
+  "// one\n/// two\n/* three */\n//! four\nfn probe() {}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 0
+      end: 6
+    - source: |
+        //! four
+      style: secondary
+      start: 27
+      end: 36
+    - source: /* three */
+      style: secondary
+      start: 15
+      end: 26
+    - source: |
+        /// two
+      style: secondary
+      start: 7
+      end: 15
+  "//! one\n//! two\n//! three\n//! four\nuse std::io;\n":
+    labels:
+    - source: |
+        //! one
+      style: primary
+      start: 0
+      end: 8
+    - source: |
+        //! four
+      style: secondary
+      start: 26
+      end: 35
+    - source: |
+        //! three
+      style: secondary
+      start: 16
+      end: 26
+    - source: |
+        //! two
+      style: secondary
+      start: 8
+      end: 16
+  "/// One line of prose and a doctest.\n///\n/// ```\n/// let _ = 1;\n/// ```\nfn probe() {}\n":
+    labels:
+    - source: |
+        /// One line of prose and a doctest.
+      style: primary
+      start: 0
+      end: 37
+    - source: |
+        /// let _ = 1;
+      style: secondary
+      start: 49
+      end: 64
+    - source: |
+        /// ```
+      style: secondary
+      start: 41
+      end: 49
+    - source: |
+        ///
+      style: secondary
+      start: 37
+      end: 41
+  "/// One line of prose.\n///\n/// # Errors\n/// Fails on empty input.\nfn probe() {}\n":
+    labels:
+    - source: |
+        /// One line of prose.
+      style: primary
+      start: 0
+      end: 23
+    - source: |
+        /// Fails on empty input.
+      style: secondary
+      start: 40
+      end: 66
+    - source: |
+        /// # Errors
+      style: secondary
+      start: 27
+      end: 40
+    - source: |
+        ///
+      style: secondary
+      start: 23
+      end: 27
+  "/// one\n/// two\n#[derive(Debug)]\n#[allow(dead_code)]\n// three\n// four\nstruct Probe;\n":
+    labels:
+    - source: |
+        /// one
+      style: primary
+      start: 0
+      end: 8
+    - source: // four
+      style: secondary
+      start: 62
+      end: 69
+    - source: // three
+      style: secondary
+      start: 53
+      end: 61
+    - source: |
+        /// two
+      style: secondary
+      start: 8
+      end: 16
+  "/// one\n/// two\n/// three\n/// four\nfn probe() {}\n":
+    labels:
+    - source: |
+        /// one
+      style: primary
+      start: 0
+      end: 8
+    - source: |
+        /// four
+      style: secondary
+      start: 26
+      end: 35
+    - source: |
+        /// three
+      style: secondary
+      start: 16
+      end: 26
+    - source: |
+        /// two
+      style: secondary
+      start: 8
+      end: 16
   "fn probe() {\n    // one\n    // two\n    // three\n    // four\n    // five\n    let _ = 1;\n}\n":
     labels:
     - source: // one
@@ -100,3 +308,43 @@ snapshots:
       style: secondary
       start: 79
       end: 138
+  "impl Probe {\n    /// one\n    /// two\n    /// three\n    /// four\n    fn probe(&self) {}\n}\n":
+    labels:
+    - source: |
+        /// one
+      style: primary
+      start: 17
+      end: 25
+    - source: |
+        /// four
+      style: secondary
+      start: 55
+      end: 64
+    - source: |
+        /// three
+      style: secondary
+      start: 41
+      end: 51
+    - source: |
+        /// two
+      style: secondary
+      start: 29
+      end: 37
+  "struct Probe {\n    a: u8, // one\n    // two\n    // three\n    // four\n    b: u8,\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 26
+      end: 32
+    - source: // four
+      style: secondary
+      start: 61
+      end: 68
+    - source: // three
+      style: secondary
+      start: 48
+      end: 56
+    - source: // two
+      style: secondary
+      start: 37
+      end: 43

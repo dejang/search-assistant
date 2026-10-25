@@ -1,0 +1,53 @@
+id: comment-max-two-lines-ts
+snapshots:
+  "/* one */\n// two\n// three\nconst probe = 1;\n":
+    labels:
+    - source: /* one */
+      style: primary
+      start: 0
+      end: 9
+    - source: // three
+      style: secondary
+      start: 17
+      end: 25
+    - source: // two
+      style: secondary
+      start: 10
+      end: 16
+  "/**\n * one\n */\nconst probe = 1;\n":
+    labels:
+    - source: |-
+        /**
+         * one
+         */
+      style: primary
+      start: 0
+      end: 14
+  "// one\n// two\n\n// three\nconst probe = 1;\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 0
+      end: 6
+    - source: // three
+      style: secondary
+      start: 15
+      end: 23
+    - source: // two
+      style: secondary
+      start: 7
+      end: 13
+  "// one\n// two\n// three\nconst probe = 1;\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 0
+      end: 6
+    - source: // three
+      style: secondary
+      start: 14
+      end: 22
+    - source: // two
+      style: secondary
+      start: 7
+      end: 13
