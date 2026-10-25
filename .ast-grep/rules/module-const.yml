@@ -6,5 +6,8 @@ rule:
   kind: const_item
   not:
     inside:
-      kind: function_item
+      any:
+        - kind: function_item
+        - kind: impl_item
+        - kind: trait_item
       stopBy: end

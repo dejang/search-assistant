@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Icon } from './components/ui/icons/Icon';
 import { ModelProgress } from './ModelProgress';
@@ -14,11 +13,15 @@ const pillStyle: React.CSSProperties = {
   boxShadow: '0 4px 24px rgba(0,0,0,0.28), 0 1px 3px rgba(0,0,0,0.12)',
 };
 
+interface ResearchBarProps {
+  /** Hands the trimmed query to the research run. */
+  onSubmit: (query: string) => void;
+}
+
 /** Floating research command bar: translucent pill with search icon + TextField. */
-export function ResearchBar() {
+export function ResearchBar({ onSubmit }: ResearchBarProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [value, setValue] = React.useState('');
-  const [pending, setPending] = React.useState(false);
   const { status, shown, retry } = useModelDownload();
 
   // Nothing can be answered until the model is on disk, so the field is closed
@@ -30,24 +33,17 @@ export function ResearchBar() {
     [],
   );
 
-  // One search at a time: each drives its own headless browser, so a second
-  // Enter while one is running would only queue another browser behind it.
   const submit = React.useCallback(() => {
     const query = value.trim();
-    if (query === '' || pending) {
-      return;
+    if (query !== '') {
+      onSubmit(query);
     }
-    setPending(true);
-    invoke('search_web', { query })
-      .catch((error: unknown) => {
-        console.error('search failed', error);
-      })
-      .finally(() => setPending(false));
-  }, [value, pending]);
+  }, [value, onSubmit]);
 
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
+      // Enter that commits an IME candidate is not a submit.
+      if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
         e.preventDefault();
         submit();
       }
@@ -64,19 +60,10 @@ export function ResearchBar() {
       });
     });
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten
+        .then((dispose) => dispose())
+        .catch(() => undefined);
     };
-  }, []);
-
-  // Hide on Escape
-  React.useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        invoke('hide_window');
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   // A disabled field cannot take focus, so this runs again when the download

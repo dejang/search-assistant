@@ -444,3 +444,155 @@ mod in_process {
         );
     }
 }
+
+#[cfg(test)]
+mod tool_concurrency {
+    use std::future::Future;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use rig_agent::AgentBuilder;
+    use rig_core::http_client::{
+        Bytes, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request, Response, StatusCode,
+        StreamingResponse,
+    };
+    use rig_core::providers::openai::OpenAIConfig;
+    use rig_core::tool::{Tool, ToolContext};
+    use rig_core::wasm_compat::WasmCompatSend;
+    use serde_json::{Value, json};
+    use tokio::sync::Barrier;
+
+    use crate::agent::{AgentError, BuddyAgent, RunBudget};
+
+    #[derive(Clone)]
+    struct TwoCalls;
+
+    impl HttpClientExt for TwoCalls {
+        fn send<T, U>(
+            &self,
+            request: Request<T>,
+        ) -> impl std::future::Future<
+            Output = Result<Response<LazyBody<U>>, rig_core::http_client::Error>,
+        > + Send
+        + 'static
+        where
+            T: Into<Bytes> + Send,
+            U: From<Bytes> + Send + 'static,
+        {
+            let body: Bytes = request.into_body().into();
+            let answered = body
+                .windows(b"tool_call_id".len())
+                .any(|window| window == b"tool_call_id");
+            let document = if answered {
+                r#"{"id":"c2","object":"chat.completion","created":1,"model":"qwen3-8b",
+                "choices":[{"index":0,"message":{"role":"assistant","content":"Both met."},
+                "finish_reason":"stop"}],
+                "usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}"#
+            } else {
+                r#"{"id":"c1","object":"chat.completion","created":1,"model":"qwen3-8b",
+                "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                "tool_calls":[
+                {"id":"call_a","type":"function","function":{"name":"meet","arguments":"{}"}},
+                {"id":"call_b","type":"function","function":{"name":"meet","arguments":"{}"}}]},
+                "finish_reason":"tool_calls"}],
+                "usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}"#
+            };
+            let bytes = Bytes::from_static(document.as_bytes());
+            async move {
+                let mut response =
+                    Response::new(Box::pin(async move { Ok(U::from(bytes)) }) as LazyBody<U>);
+                *response.status_mut() = StatusCode::OK;
+                response
+                    .headers_mut()
+                    .insert("content-type", HeaderValue::from_static("application/json"));
+                Ok(response)
+            }
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _request: Request<MultipartForm>,
+        ) -> impl std::future::Future<
+            Output = Result<Response<LazyBody<U>>, rig_core::http_client::Error>,
+        > + Send
+        + 'static
+        where
+            U: From<Bytes> + Send + 'static,
+        {
+            std::future::ready(Err(rig_core::http_client::Error::instance(
+                std::io::Error::other("no files here"),
+            )))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _request: Request<T>,
+        ) -> impl std::future::Future<
+            Output = Result<StreamingResponse, rig_core::http_client::Error>,
+        > + Send
+        where
+            T: Into<Bytes> + Send,
+        {
+            std::future::ready(Err(rig_core::http_client::Error::instance(
+                std::io::Error::other("one piece"),
+            )))
+        }
+    }
+
+    struct Meet {
+        barrier: Arc<Barrier>,
+    }
+
+    impl Tool for Meet {
+        const NAME: &'static str = "meet";
+        type Args = Value;
+        type Output = String;
+        type Error = AgentError;
+
+        fn description(&self) -> String {
+            "Waits until its sibling call arrives.".to_string()
+        }
+
+        fn parameters(&self) -> Value {
+            json!({ "type": "object", "properties": {} })
+        }
+
+        fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Value,
+        ) -> impl Future<Output = Result<String, AgentError>> + WasmCompatSend {
+            let barrier = Arc::clone(&self.barrier);
+            async move {
+                barrier.wait().await;
+                Ok("met".to_string())
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn the_calls_of_one_turn_run_side_by_side() {
+        let provider = OpenAIConfig::new("local")
+            .with_base_url("http://local-engine/v1")
+            .connect(TwoCalls);
+        let agent = BuddyAgent {
+            inner: AgentBuilder::new(provider.chat("qwen3-8b"))
+                .tool(Meet {
+                    barrier: Arc::new(Barrier::new(2)),
+                })
+                .build(),
+            model: "qwen3-8b".to_string(),
+            budget: RunBudget {
+                turns: 3,
+                retries: 3,
+                tools: 2,
+            },
+        };
+
+        let answer = tokio::time::timeout(Duration::from_secs(5), agent.ask("Meet twice."))
+            .await
+            .expect("two calls that wait on each other finish only when they run together");
+
+        assert_eq!(answer.unwrap(), "Both met.");
+    }
+}

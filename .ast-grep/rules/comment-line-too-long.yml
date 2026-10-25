@@ -7,8 +7,6 @@ message: "Comment line is longer than 96 characters; wrap it or move the reasoni
 rule:
   any:
     - kind: line_comment
-      any:
-        - regex: '^//[^/!].{94,}'
-        - regex: '^//[/!].{94,}'
+      regex: '^//[^\r\n]{95,}'
     - kind: block_comment
       regex: '(^|\n)[ \t]*[^ \t\n][^\r\n]{96,}'

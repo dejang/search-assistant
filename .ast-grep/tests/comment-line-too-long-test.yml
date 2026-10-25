@@ -11,6 +11,7 @@ valid:
         /* a block comment line of exactly ninety-six characters is allowed and this line is that wide*/
         let _ = 1;
     }
+  - "fn probe() {\r\n    // a plain comment of exactly ninety-six characters followed by a CRLF ending is still fine here\r\n}\r\n"
 invalid:
   - |
     fn probe() {

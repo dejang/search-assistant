@@ -24,6 +24,15 @@ valid:
         {/* four */}
       </div>
     );
+  - |
+    const probe = (
+      <div>
+        {
+          // one
+        }
+        {/* two */}
+      </div>
+    );
 invalid:
   - |
     const probe = (

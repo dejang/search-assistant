@@ -10,7 +10,6 @@ pub use convert::html_to_markdown;
 use std::sync::Arc;
 
 use obscura::Browser;
-use tauri::State;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -188,18 +187,4 @@ impl UrlExtractor {
             markdown,
         })
     }
-}
-
-/// Returns [`ExtractorError`] if the browser cannot start, the navigation
-/// # Errors
-/// `ExtractorError` if the browser cannot start or the page will not convert.
-#[tauri::command]
-pub async fn search_web(
-    extractor: State<'_, Arc<UrlExtractor>>,
-    query: String,
-) -> Result<(), ExtractorError> {
-    let content = extractor.search(&query).await?;
-    log::info!("query {query:?} -> {} [{}]", content.url, content.title);
-    log::info!("{}", content.markdown);
-    Ok(())
 }

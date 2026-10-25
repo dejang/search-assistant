@@ -51,13 +51,6 @@ hf-hub = "1"
 # because Cargo unions them with `hf-hub`'s own request.
 reqwest = { version = "0.13", default-features = false }
 thiserror = "2"
-# The in-process engine. `metal` puts the Q4_K_M GGUF on the Apple GPU. Pinned
-# to the published 0.8 line: 0.9 moved the request and unload APIs around, and
-# this is the version verified to build against `metal` here.
-mistralrs = { version = "0.8.1", features = ["metal"] }
-# `FutureExt::catch_unwind` is the only way to await a loader or a turn that may
-# unwind, and `panic = "unwind"` is what makes catching it possible at all.
-futures = "0.3"
 # `time` and `macros` are used by library code (`agent::BuddyAgent::ask_within`)
 # and by the tests below. `rt` and `net` let `url_extractor` drive obscura on a
 # current-thread runtime, the only flavor one isolate tolerates, and `sync` gives
@@ -83,8 +76,4 @@ unreachable_pub = "deny"
 codegen-units = 1
 lto = true
 opt-level = 3
-# Unwind, not abort, so `local_engine` can catch a panic raised on its own task
-# — loading a model is synchronous work it drives itself. A panic on the
-# engine's own thread is not catchable from here and arrives as a closed channel.
-panic = "unwind"
 strip = true

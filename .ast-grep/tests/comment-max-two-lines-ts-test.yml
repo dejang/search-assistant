@@ -30,3 +30,22 @@ invalid:
     // two
     // three
     const probe = 1;
+  - |
+    if (ready) {
+      run();
+    } // one
+    // two
+    // three
+    done();
+  - |
+    const probe = 1 // one
+    // two
+    // three
+  - |
+    class Probe {
+      // one
+      @observed
+      // two
+      // three
+      value = 1;
+    }

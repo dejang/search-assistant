@@ -181,6 +181,14 @@ snapshots:
       style: secondary
       start: 53
       end: 61
+    - source: "#[allow(dead_code)]"
+      style: secondary
+      start: 33
+      end: 52
+    - source: "#[derive(Debug)]"
+      style: secondary
+      start: 16
+      end: 32
     - source: |
         /// two
       style: secondary
@@ -208,6 +216,36 @@ snapshots:
       style: secondary
       start: 8
       end: 16
+  "fn probe() -> Probe {\n    Probe {\n        // one\n        // two\n        #[cfg(test)]\n        // three\n        // four\n        a: 1,\n    }\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 42
+      end: 48
+    - source: "#[cfg(test)]"
+      style: secondary
+      start: 72
+      end: 84
+    - source: // four
+      style: secondary
+      start: 110
+      end: 117
+    - source: // three
+      style: secondary
+      start: 93
+      end: 101
+    - source: |-
+        #[cfg(test)]
+                // three
+                // four
+                a: 1
+      style: secondary
+      start: 72
+      end: 130
+    - source: // two
+      style: secondary
+      start: 57
+      end: 63
   "fn probe() {\n    // one\n    // two\n    // three\n    // four\n    // five\n    let _ = 1;\n}\n":
     labels:
     - source: // one
@@ -308,6 +346,58 @@ snapshots:
       style: secondary
       start: 79
       end: 138
+  "fn probe() {\n    let _ = [\n        1 // one\n        // two\n        ,\n        // three\n        // four\n    ];\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 37
+      end: 43
+    - source: // four
+      style: secondary
+      start: 94
+      end: 101
+    - source: // three
+      style: secondary
+      start: 77
+      end: 85
+    - source: ","
+      style: secondary
+      start: 67
+      end: 68
+    - source: // two
+      style: secondary
+      start: 52
+      end: 58
+  "fn probe(x: u8) {\n    match x {\n        // one\n        // two\n        #[cfg(test)]\n        // three\n        // four\n        1 => {}\n        _ => {}\n    }\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 40
+      end: 46
+    - source: "#[cfg(test)]"
+      style: secondary
+      start: 70
+      end: 82
+    - source: // four
+      style: secondary
+      start: 108
+      end: 115
+    - source: // three
+      style: secondary
+      start: 91
+      end: 99
+    - source: |-
+        #[cfg(test)]
+                // three
+                // four
+                1 => {}
+      style: secondary
+      start: 70
+      end: 131
+    - source: // two
+      style: secondary
+      start: 55
+      end: 61
   "impl Probe {\n    /// one\n    /// two\n    /// three\n    /// four\n    fn probe(&self) {}\n}\n":
     labels:
     - source: |
@@ -330,6 +420,88 @@ snapshots:
       style: secondary
       start: 29
       end: 37
+  "macro_rules! probe {\n    (\n        // one\n        // two\n        #[cfg(test)]\n        // three\n        // four\n        $x:ident\n    ) => {};\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 35
+      end: 41
+    - source: '#'
+      style: secondary
+      start: 65
+      end: 66
+    - source: // four
+      style: secondary
+      start: 103
+      end: 110
+    - source: // three
+      style: secondary
+      start: 86
+      end: 94
+    - source: "[cfg(test)]"
+      style: secondary
+      start: 66
+      end: 77
+    - source: '#'
+      style: secondary
+      start: 65
+      end: 66
+    - source: // two
+      style: secondary
+      start: 50
+      end: 56
+  "macro_rules! probe {\n    ($(#[$m:meta])* $n:ident) => {\n        // one\n        // two\n        $(#[$m])*\n        // three\n        // four\n        struct $n;\n    };\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 64
+      end: 70
+    - source: // four
+      style: secondary
+      start: 129
+      end: 136
+    - source: // three
+      style: secondary
+      start: 112
+      end: 120
+    - source: $(#[$m])*
+      style: secondary
+      start: 94
+      end: 103
+    - source: // two
+      style: secondary
+      start: 79
+      end: 85
+  "macro_rules! probe {\n    () => {\n        // one\n        // two\n        #[derive(Debug)]\n        // three\n        // four\n        struct Probe;\n    };\n}\n":
+    labels:
+    - source: // one
+      style: primary
+      start: 41
+      end: 47
+    - source: '#'
+      style: secondary
+      start: 71
+      end: 72
+    - source: // four
+      style: secondary
+      start: 113
+      end: 120
+    - source: // three
+      style: secondary
+      start: 96
+      end: 104
+    - source: "[derive(Debug)]"
+      style: secondary
+      start: 72
+      end: 87
+    - source: '#'
+      style: secondary
+      start: 71
+      end: 72
+    - source: // two
+      style: secondary
+      start: 56
+      end: 62
   "struct Probe {\n    a: u8, // one\n    // two\n    // three\n    // four\n    b: u8,\n}\n":
     labels:
     - source: // one

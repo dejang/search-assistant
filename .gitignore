@@ -25,3 +25,6 @@ dist-ssr
 
 # Rust build output (Tauri)
 src-tauri/target
+
+# Built by scripts/build-llama-server.sh
+src-tauri/binaries

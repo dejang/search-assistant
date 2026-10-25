@@ -142,3 +142,69 @@ invalid:
         // four
         b: u8,
     }
+  - |
+    fn probe(x: u8) {
+        match x {
+            // one
+            // two
+            #[cfg(test)]
+            // three
+            // four
+            1 => {}
+            _ => {}
+        }
+    }
+  - |
+    fn probe() -> Probe {
+        Probe {
+            // one
+            // two
+            #[cfg(test)]
+            // three
+            // four
+            a: 1,
+        }
+    }
+  - |
+    fn probe() {
+        let _ = [
+            1 // one
+            // two
+            ,
+            // three
+            // four
+        ];
+    }
+  - |
+    macro_rules! probe {
+        () => {
+            // one
+            // two
+            #[derive(Debug)]
+            // three
+            // four
+            struct Probe;
+        };
+    }
+  - |
+    macro_rules! probe {
+        (
+            // one
+            // two
+            #[cfg(test)]
+            // three
+            // four
+            $x:ident
+        ) => {};
+    }
+  - |
+    macro_rules! probe {
+        ($(#[$m:meta])* $n:ident) => {
+            // one
+            // two
+            $(#[$m])*
+            // three
+            // four
+            struct $n;
+        };
+    }

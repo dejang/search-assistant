@@ -10,7 +10,31 @@ valid:
         let doc = 1;
         println!("{doc}", doc = doc);
     }
+  - |
+    #[deprecated(note = "use doc = ... instead")]
+    fn probe() {
+        println!("write #[doc = \"x\"] as a comment");
+    }
+  - |
+    macro_rules! probe {
+        () => {
+            let _ = vec![doc = 1];
+        };
+    }
 invalid:
+  - |
+    #[cfg_attr(all(), /* c */ doc /* c */ = "Hidden from the comment rules.")]
+    fn probe() {}
+  - |
+    macro_rules! probe {
+        () => {
+            #[/* c */ doc = "Hidden from the comment rules."]
+            fn probe() {}
+        };
+    }
+  - |
+    #[doc /* x */ = "Hidden from the comment rules."]
+    fn probe() {}
   - |
     #[doc = "Hidden from the comment rules."]
     fn probe() {}

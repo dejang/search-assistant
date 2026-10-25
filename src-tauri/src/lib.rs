@@ -15,8 +15,12 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
 use agent::BuddyAgent;
-use local_engine::{Budget, EngineClient, LocalEngine};
+use agent::RunBudget;
+use agent::progress::ResearchProgress;
+use agent::tools::Tooling;
+use local_engine::{Budget, EngineClient, LocalEngine, Sampling, ServerConfig};
 use model_store::ModelStore;
+use url_extractor::UrlExtractor;
 
 fn toggle_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -32,10 +36,17 @@ fn toggle_main_window(app: &tauri::AppHandle) {
 
 fn mount_agent(app: &tauri::AppHandle) {
     let engine = Arc::clone(&app.state::<Arc<LocalEngine>>());
-    let agent = BuddyAgent::with_client(
+    let extractor = Arc::clone(&app.state::<Arc<UrlExtractor>>());
+    let progress = Arc::clone(&app.state::<Arc<ResearchProgress>>());
+    let agent = BuddyAgent::with_research(
         EngineClient::new(engine),
         "qwen3-8b",
-        "You are a concise research assistant. Answer what was asked, in plain language.",
+        Tooling::new(extractor, progress, 8_000),
+        RunBudget {
+            turns: 12,
+            retries: 3,
+            tools: 4,
+        },
     );
     app.manage(Arc::new(agent));
 }
@@ -44,6 +55,17 @@ fn mount_agent(app: &tauri::AppHandle) {
 fn hide_window(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
+    }
+    drop(app);
+}
+
+/// Grows the window into the research panel, or shrinks it back to the bar.
+#[tauri::command]
+fn set_research_view(app: tauri::AppHandle, expanded: bool) {
+    let (width, height) = if expanded { (980, 680) } else { (760, 160) };
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_size(tauri::LogicalSize::new(width, height));
+        let _ = window.center();
     }
     drop(app);
 }
@@ -74,7 +96,8 @@ pub fn run() -> Result<(), tauri::Error> {
         .setup(|app| {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             app.global_shortcut().register("alt+shift+space")?;
-            app.manage(Arc::new(url_extractor::UrlExtractor::new(8)));
+            app.manage(Arc::new(UrlExtractor::new(8)));
+            app.manage(Arc::new(ResearchProgress::new(app.handle().clone())));
             ModelStore::start(app.handle(), "Qwen", "Qwen3-8B-GGUF", "Q4_K_M");
             let store = app
                 .handle()
@@ -88,18 +111,42 @@ pub fn run() -> Result<(), tauri::Error> {
                     load: Duration::from_secs(300),
                     answer: Duration::from_secs(120),
                 },
-                4,
+                ServerConfig {
+                    binary: std::env::current_exe()?.with_file_name("llama-server"),
+                    slots: 4,
+                    slot_context: 16_384,
+                    cache_mib: 2_048,
+                    sampling: Sampling {
+                        temperature: 0.7,
+                        top_p: 0.8,
+                        top_k: 20,
+                        min_p: 0.0,
+                    },
+                    log: app
+                        .path()
+                        .app_log_dir()
+                        .ok()
+                        .map(|dir| dir.join("llama-server.log")),
+                },
             );
             mount_agent(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             hide_window,
-            agent::chat_ask,
+            set_research_view,
+            agent::research_ask,
             local_engine::engine_status,
             model_store::model_download,
-            model_store::model_download_status,
-            url_extractor::search_web
+            model_store::model_download_status
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())?
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event
+                && let Some(engine) = app.try_state::<Arc<LocalEngine>>()
+            {
+                engine.shutdown();
+            }
+        });
+    Ok(())
 }

@@ -1,24 +1,23 @@
 mod bridge;
+mod server;
 
 #[cfg(test)]
 mod tests;
 
-use std::panic::AssertUnwindSafe;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
-use futures::FutureExt;
-use mistralrs::{GgufModelBuilder, Model, RequestBuilder};
-use rig_core::http_client::StatusCode;
+use rig_core::http_client::{Bytes, StatusCode};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::model_store::ModelStore;
 
 pub use bridge::EngineClient;
+use server::Server;
+pub use server::{Sampling, ServerConfig};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,7 +51,7 @@ pub enum EngineError {
     Load { reason: String },
 
     #[error("the model stopped answering and will load again next time")]
-    Panicked,
+    Stopped,
 
     #[error("the model is not answering right now")]
     Unavailable,
@@ -73,23 +72,9 @@ impl EngineError {
             Self::Request { .. } => StatusCode::BAD_REQUEST,
             Self::Generation { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             Self::TimedOut { .. } => StatusCode::GATEWAY_TIMEOUT,
-            Self::Load { .. } | Self::Panicked | Self::Unavailable => {
+            Self::Load { .. } | Self::Stopped | Self::Unavailable => {
                 StatusCode::SERVICE_UNAVAILABLE
             }
-        }
-    }
-
-    fn is_fatal(&self) -> bool {
-        matches!(
-            self,
-            Self::Panicked | Self::Unavailable | Self::Load { .. } | Self::TimedOut { .. }
-        )
-    }
-
-    fn why(&self) -> &'static str {
-        match self {
-            Self::TimedOut { .. } => "the model did not answer in time",
-            _ => "the model stopped answering",
         }
     }
 }
@@ -105,8 +90,9 @@ pub struct LocalEngine {
     store: Option<Arc<ModelStore>>,
     budget: Budget,
     slots: Arc<tokio::sync::Semaphore>,
-    model: tokio::sync::Mutex<Option<Arc<Model>>>,
-    building: Arc<AtomicU32>,
+    server: ServerConfig,
+    running: tokio::sync::Mutex<Option<Arc<Server>>>,
+    spawned: Mutex<Weak<Server>>,
     in_flight: AtomicU32,
     epoch: AtomicU64,
     status: Arc<Mutex<EngineStatus>>,
@@ -114,15 +100,20 @@ pub struct LocalEngine {
 }
 
 impl LocalEngine {
-    pub fn start(app: &AppHandle, store: Option<Arc<ModelStore>>, budget: Budget, slots: usize) {
-        app.manage(Arc::new(Self::mounted(app, store, budget, slots)));
+    pub fn start(
+        app: &AppHandle,
+        store: Option<Arc<ModelStore>>,
+        budget: Budget,
+        server: ServerConfig,
+    ) {
+        app.manage(Arc::new(Self::mounted(app, store, budget, server)));
     }
 
     fn mounted(
         app: &AppHandle,
         store: Option<Arc<ModelStore>>,
         budget: Budget,
-        slots: usize,
+        server: ServerConfig,
     ) -> Self {
         let loaded = store
             .as_ref()
@@ -135,9 +126,10 @@ impl LocalEngine {
         Self {
             store,
             budget,
-            slots: Arc::new(tokio::sync::Semaphore::new(slots.max(1))),
-            model: tokio::sync::Mutex::new(None),
-            building: Arc::new(AtomicU32::new(0)),
+            slots: Arc::new(tokio::sync::Semaphore::new(server.slots.max(1))),
+            server,
+            running: tokio::sync::Mutex::new(None),
+            spawned: Mutex::new(Weak::new()),
             in_flight: AtomicU32::new(0),
             epoch: AtomicU64::new(0),
             status: Arc::new(Mutex::new(EngineStatus::of(phase))),
@@ -153,12 +145,15 @@ impl LocalEngine {
             .clone()
     }
 
-    pub(crate) async fn complete(
-        self: &Arc<Self>,
-        request: RequestBuilder,
-    ) -> Result<serde_json::Value, EngineError> {
+    pub fn shutdown(&self) {
+        if let Some(server) = self.spawned().upgrade() {
+            server.stop();
+        }
+    }
+
+    async fn complete(self: &Arc<Self>, body: Bytes) -> Result<(StatusCode, Bytes), EngineError> {
         let _question = self.begin_turn();
-        self.turn(request).await
+        self.turn(body).await
     }
 
     fn begin_turn(self: &Arc<Self>) -> TurnGuard {
@@ -169,125 +164,73 @@ impl LocalEngine {
         }
     }
 
-    async fn turn(
-        self: &Arc<Self>,
-        request: RequestBuilder,
-    ) -> Result<serde_json::Value, EngineError> {
+    async fn turn(self: &Arc<Self>, body: Bytes) -> Result<(StatusCode, Bytes), EngineError> {
         let budget = self.budget.answer;
         let slot = tokio::time::timeout(budget, Arc::clone(&self.slots).acquire_owned())
             .await
             .map_err(|_| EngineError::Unavailable)?
             .map_err(|_| EngineError::Unavailable)?;
-        let model = self.loaded().await?;
+        let server = self.running().await?;
 
-        let generating = AssertUnwindSafe(model.send_chat_request(request)).catch_unwind();
-        let outcome = tokio::time::timeout(budget, generating).await;
+        let outcome = tokio::time::timeout(budget, server.chat(body)).await;
         drop(slot);
 
-        let mapped = match outcome {
-            Ok(Ok(Ok(completion))) => {
+        match outcome {
+            Ok(Ok(reply)) => {
                 self.publish(EnginePhase::Ready, None);
-                return serde_json::to_value(completion).map_err(|error| EngineError::Generation {
-                    reason: error.to_string(),
-                });
+                Ok(reply)
             }
-            Ok(Ok(Err(error))) => Self::refused(&error),
-            Ok(Err(_)) => EngineError::Panicked,
-            Err(_) => EngineError::TimedOut { timeout: budget },
-        };
-        if mapped.is_fatal() {
-            self.forget_model(&model, mapped.why()).await;
+            Ok(Err(EngineError::Stopped)) => {
+                self.forget(&server).await;
+                Err(EngineError::Stopped)
+            }
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(EngineError::TimedOut { timeout: budget }),
         }
-        Err(mapped)
     }
 
-    async fn loaded(&self) -> Result<Arc<Model>, EngineError> {
-        let mut held = self.model.lock().await;
-        if let Some(model) = held.as_ref() {
-            return Ok(Arc::clone(model));
-        }
-        if self.building.load(Ordering::SeqCst) > 0 {
-            return Err(EngineError::Unavailable);
+    async fn running(&self) -> Result<Arc<Server>, EngineError> {
+        let mut held = self.running.lock().await;
+        if let Some(server) = held.as_ref().filter(|server| !server.exited()) {
+            return Ok(Arc::clone(server));
         }
 
-        let files = self
+        let model = self
             .store
             .as_ref()
-            .map_or_else(Vec::new, |store| store.model_files());
-        if files.is_empty() {
-            return Err(EngineError::Load {
+            .and_then(|store| store.model_files().into_iter().min())
+            .ok_or_else(|| EngineError::Load {
                 reason: "the model is not on disk yet".into(),
-            });
-        }
+            })?;
 
         self.publish(EnginePhase::Loading, None);
-        let loading = tokio::time::timeout(self.budget.load, self.load_model(&files)).await;
-        match loading {
-            Ok(Ok(model)) => {
-                let model = Arc::new(model);
-                *held = Some(Arc::clone(&model));
+        match self.launch(&model).await {
+            Ok(server) => {
+                *held = Some(Arc::clone(&server));
                 self.publish(EnginePhase::Ready, None);
-                Ok(model)
+                Ok(server)
             }
-            Ok(Err(error)) => {
+            Err(error) => {
                 self.publish(EnginePhase::Failed, Some(error.to_string()));
                 Err(error)
             }
-            Err(_) => {
-                let timeout = self.budget.load;
-                let reason = format!("the model did not load within {timeout:?}");
-                self.publish(EnginePhase::Failed, Some(reason.clone()));
-                Err(EngineError::Load { reason })
-            }
         }
     }
 
-    async fn load_model(&self, files: &[PathBuf]) -> Result<Model, EngineError> {
-        let names: Vec<String> = files
-            .iter()
-            .map(|path| path.display().to_string())
-            .collect();
-        self.building.fetch_add(1, Ordering::SeqCst);
-        let count = Arc::clone(&self.building);
-        let built = tauri::async_runtime::spawn_blocking(move || {
-            let _count = Count(count);
-            tauri::async_runtime::handle().block_on(async move {
-                AssertUnwindSafe(GgufModelBuilder::new("local", names).build())
-                    .catch_unwind()
-                    .await
-            })
-        })
-        .await
-        .map_err(|error| {
-            self.building.fetch_sub(1, Ordering::SeqCst);
-            EngineError::Load {
-                reason: error.to_string(),
-            }
-        })?;
-
-        match built {
-            Ok(Ok(model)) => Ok(model),
-            Ok(Err(error)) => Err(EngineError::Load {
-                reason: format!("{error:#}"),
+    async fn launch(&self, model: &Path) -> Result<Arc<Server>, EngineError> {
+        let server = Arc::new(Server::spawn(&self.server, model)?);
+        *self.spawned() = Arc::downgrade(&server);
+        let timeout = self.budget.load;
+        match tokio::time::timeout(timeout, server.ready()).await {
+            Ok(ready) => ready.map(|()| server),
+            Err(_) => Err(EngineError::Load {
+                reason: format!("the model did not load within {timeout:?}"),
             }),
-            Err(_) => Err(EngineError::Panicked),
         }
     }
 
     fn quiescent(in_flight: u32, armed: u64, epoch: u64) -> bool {
         in_flight == 0 && armed == epoch
-    }
-
-    fn refused(error: &mistralrs::error::Error) -> EngineError {
-        let reason = error.to_string();
-        match error {
-            mistralrs::error::Error::RequestValidation(..) => EngineError::Request { reason },
-            mistralrs::error::Error::Inference(..)
-            | mistralrs::error::Error::Channel(..)
-            | mistralrs::error::Error::Management(..) => EngineError::Unavailable,
-            mistralrs::error::Error::ModelLoad(..) => EngineError::Load { reason },
-            _ => EngineError::Generation { reason },
-        }
     }
 
     async fn idle_out(self: Arc<Self>, armed: u64) {
@@ -296,7 +239,7 @@ impl LocalEngine {
     }
 
     async fn unload(&self, armed: u64) {
-        let mut held = self.model.lock().await;
+        let mut held = self.running.lock().await;
         if !Self::quiescent(
             self.in_flight.load(Ordering::SeqCst),
             armed,
@@ -309,18 +252,19 @@ impl LocalEngine {
         }
     }
 
-    async fn forget_model(&self, model: &Arc<Model>, why: &str) {
-        self.publish(
-            EnginePhase::Failed,
-            Some(format!("{why} and will load again next time")),
-        );
-        let mut held = self.model.lock().await;
+    async fn forget(&self, server: &Arc<Server>) {
+        let mut held = self.running.lock().await;
         if held
             .as_ref()
-            .is_some_and(|resident| Arc::ptr_eq(resident, model))
+            .is_some_and(|resident| Arc::ptr_eq(resident, server))
         {
             held.take();
+            self.publish(EnginePhase::Failed, Some(EngineError::Stopped.to_string()));
         }
+    }
+
+    fn spawned(&self) -> MutexGuard<'_, Weak<Server>> {
+        self.spawned.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn publish(&self, phase: EnginePhase, message: Option<String>) {
@@ -355,12 +299,4 @@ impl Drop for TurnGuard {
 #[tauri::command]
 pub fn engine_status(engine: State<'_, Arc<LocalEngine>>) -> EngineStatus {
     engine.status()
-}
-
-struct Count(Arc<AtomicU32>);
-
-impl Drop for Count {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
 }
