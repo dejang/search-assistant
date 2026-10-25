@@ -1,4 +1,4 @@
-//! Tests for the url_extractor module.
+//! Tests for the `url_extractor` module.
 
 use super::convert::html_to_markdown;
 
@@ -85,12 +85,20 @@ mod conversion {
     }
 
     #[test]
+    fn crlf_script_tag_is_stripped() {
+        let html = "<script\r\ntype=\"text/javascript\">\r\n tracking();\r\n</script><p>ok</p>";
+        let md = html_to_markdown(html).unwrap();
+        assert!(!md.contains("tracking"), "CRLF script content leaked: {md}");
+        assert!(md.contains("ok"));
+    }
+
+    #[test]
     fn empty_page_has_no_body_content() {
         let html = include_str!("fixtures/empty.html");
         let md = html_to_markdown(html).unwrap();
         // htmd includes the <title> text; body content should be absent
         assert!(
-            !md.contains("<") && !md.contains("</"),
+            !md.contains('<') && !md.contains("</"),
             "unexpected HTML in output: {md}"
         );
     }
@@ -126,7 +134,7 @@ mod integration {
         unsafe { std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1") };
     }
 
-    /// Serve a fixture over HTTP; returns (url, server_future) to drive with tokio::join!.
+    /// Serve a fixture over HTTP; returns `(url, server_future)` to drive with `tokio::join!`.
     async fn serve_fixture(fixture: &str) -> (String, impl std::future::Future<Output = ()>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr: SocketAddr = listener.local_addr().unwrap();
@@ -161,7 +169,7 @@ mod integration {
         allow_private_network();
         let (url, server) = serve_fixture("simple").await;
         let extractor = UrlExtractor::new(4);
-        let (result, _) = tokio::join!(extractor.fetch(&url), server);
+        let (result, ()) = tokio::join!(extractor.fetch(&url), server);
         let result: ExtractedContent = result.expect("fetch failed");
 
         assert!(
@@ -178,7 +186,7 @@ mod integration {
         allow_private_network();
         let (url, server) = serve_fixture("links").await;
         let extractor = UrlExtractor::new(4);
-        let (result, _) = tokio::join!(extractor.fetch(&url), server);
+        let (result, ()) = tokio::join!(extractor.fetch(&url), server);
         let result = result.expect("fetch failed");
 
         assert!(
@@ -204,7 +212,7 @@ mod integration {
         allow_private_network();
         let (url, server) = serve_fixture("rich").await;
         let extractor = UrlExtractor::new(4);
-        let (result, _) = tokio::join!(extractor.fetch(&url), server);
+        let (result, ()) = tokio::join!(extractor.fetch(&url), server);
         let result = result.expect("fetch failed");
 
         assert!(result.markdown.contains("# Article Title"));
@@ -219,10 +227,10 @@ mod integration {
         allow_private_network();
         let (url, server) = serve_fixture("empty").await;
         let extractor = UrlExtractor::new(4);
-        let (result, _) = tokio::join!(extractor.fetch(&url), server);
+        let (result, ()) = tokio::join!(extractor.fetch(&url), server);
         let result = result.expect("fetch failed");
 
-        assert!(!result.markdown.contains("<"));
+        assert!(!result.markdown.contains('<'));
         assert_eq!(result.title, "Empty Page");
     }
 

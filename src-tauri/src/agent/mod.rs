@@ -18,6 +18,7 @@ use thiserror::Error;
 
 use self::main_prompt::MAIN_PROMPT;
 use self::progress::Researcher;
+use self::sub_agent_prompt::SUB_PROMPT;
 use self::tools::{ReadUrlTool, SearchTool, SubagentTool, Tooling};
 use crate::agent::progress::ResearchProgress;
 
@@ -51,7 +52,7 @@ pub enum AgentError {
 }
 
 impl AgentError {
-    /// The provider's HTTP status, when the failure came from an answered
+    /// The provider's HTTP status, when the failure came from an answered request.
     #[must_use]
     pub fn status(&self) -> Option<u16> {
         match self {
@@ -78,6 +79,12 @@ pub struct RunBudget {
     pub tools: usize,
 }
 
+fn local_provider<C: HttpClientExt + 'static>(client: C) -> OpenAI {
+    OpenAIConfig::new("local")
+        .with_base_url("http://local-engine/v1")
+        .connect(client)
+}
+
 /// A stateless question-answering agent backed by a [`rig_agent::Agent`].
 pub struct BuddyAgent {
     inner: RigAgent,
@@ -86,7 +93,7 @@ pub struct BuddyAgent {
 }
 
 impl BuddyAgent {
-    /// optional `OPENAI_BASE_URL`. An app launched from the Dock inherits no shell
+    /// Build an agent from `OPENAI_API_KEY` and optional `OPENAI_BASE_URL`.
     /// # Errors
     /// `AgentError::Config` if `OPENAI_API_KEY` or `OPENAI_BASE_URL` is unusable.
     pub fn new(model: impl Into<String>, preamble: impl Into<String>) -> Result<Self, AgentError> {
@@ -94,7 +101,7 @@ impl BuddyAgent {
         Ok(Self::build(&provider, model, preamble))
     }
 
-    /// Build an agent for `model` and `preamble` with an explicit `api_key`,
+    /// Build an agent for `model` and `preamble` with an explicit `api_key`.
     #[must_use]
     pub fn with_api_key(
         api_key: impl Into<Secret>,
@@ -104,7 +111,7 @@ impl BuddyAgent {
         Self::build(&OpenAI::new(api_key), model, preamble)
     }
 
-    /// Build an agent that sends requests to `base_url` with `api_key`, for a
+    /// Build an agent that sends requests to `base_url` with `api_key`.
     #[must_use]
     pub fn with_endpoint(
         api_key: impl Into<Secret>,
@@ -122,10 +129,7 @@ impl BuddyAgent {
         model: impl Into<String>,
         preamble: impl Into<String>,
     ) -> Self {
-        let provider = OpenAIConfig::new("local")
-            .with_base_url("http://local-engine/v1")
-            .connect(client);
-        Self::build(&provider, model, preamble)
+        Self::build(&local_provider(client), model, preamble)
     }
 
     /// The lead researcher: `MAIN_PROMPT` as its preamble, and the three tools
@@ -138,14 +142,32 @@ impl BuddyAgent {
         budget: RunBudget,
     ) -> Self {
         let model = model.into();
-        let provider = OpenAIConfig::new("local")
-            .with_base_url("http://local-engine/v1")
-            .connect(client);
+        let provider = local_provider(client);
         let inner = AgentBuilder::new(provider.chat(model.clone()))
             .preamble(MAIN_PROMPT)
             .tool(SearchTool::new(tooling.clone(), Researcher::Lead))
             .tool(ReadUrlTool::new(tooling.clone(), Researcher::Lead))
             .tool(SubagentTool::new(provider, model.clone(), tooling, budget))
+            .build();
+        Self {
+            inner,
+            model,
+            budget,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn subagent(
+        provider: &OpenAI,
+        model: impl Into<String>,
+        tooling: Tooling,
+        budget: RunBudget,
+    ) -> Self {
+        let model = model.into();
+        let inner = AgentBuilder::new(provider.chat(model.clone()))
+            .preamble(SUB_PROMPT)
+            .tool(SearchTool::new(tooling.clone(), Researcher::Subagent))
+            .tool(ReadUrlTool::new(tooling, Researcher::Subagent))
             .build();
         Self {
             inner,
@@ -176,14 +198,14 @@ impl BuddyAgent {
         &self.model
     }
 
-    /// No deadline: a gateway that accepts but never answers leaves this future
+    /// Send `prompt` to the agent without a caller deadline.
     /// # Errors
     /// `AgentError::Completion` if the request fails, `AgentError::Empty` if no text.
     pub async fn ask(&self, prompt: &str) -> Result<String, AgentError> {
         self.run(prompt).await
     }
 
-    /// Needs a tokio runtime with its time driver, which Tauri's provides; the
+    /// Send `prompt` to the agent within `timeout`.
     /// # Errors
     /// `AgentError::TimedOut` if `timeout` elapses; otherwise what `ask` gives.
     pub async fn ask_within(&self, prompt: &str, timeout: Duration) -> Result<String, AgentError> {

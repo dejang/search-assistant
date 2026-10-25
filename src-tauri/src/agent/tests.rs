@@ -1,8 +1,27 @@
-//! Tests for the agent module: unit tests pin the error contract the UI renders;
+//! Tests for the agent module.
+
+use rig_core::http_client::{Bytes, HeaderValue, LazyBody, Response, StatusCode};
 
 #[must_use]
 fn request_line(request: &str) -> &str {
     request.lines().next().unwrap_or_default()
+}
+
+fn json_response<U: From<Bytes> + Send + 'static>(
+    status: StatusCode,
+    document: &'static str,
+) -> Response<LazyBody<U>> {
+    let bytes = Bytes::from_static(document.as_bytes());
+    let mut response = Response::new(Box::pin(async move { Ok(U::from(bytes)) }) as LazyBody<U>);
+    *response.status_mut() = status;
+    response
+        .headers_mut()
+        .insert("content-type", HeaderValue::from_static("application/json"));
+    response
+}
+
+fn unsupported(reason: &str) -> rig_core::http_client::Error {
+    rig_core::http_client::Error::instance(std::io::Error::other(reason))
 }
 
 #[cfg(test)]
@@ -327,9 +346,10 @@ mod endpoint {
 
 #[cfg(test)]
 mod in_process {
+    use super::{json_response, unsupported};
     use crate::agent::BuddyAgent;
     use rig_core::http_client::{
-        Bytes, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request, Response, StatusCode,
+        Bytes, HttpClientExt, LazyBody, MultipartForm, Request, Response, StatusCode,
         StreamingResponse,
     };
 
@@ -357,17 +377,9 @@ mod in_process {
                 request.uri(),
             );
 
-            let bytes = Bytes::from_static(self.document.as_bytes());
             let status = StatusCode::from_u16(self.status).unwrap();
-            async move {
-                let mut response =
-                    Response::new(Box::pin(async move { Ok(U::from(bytes)) }) as LazyBody<U>);
-                *response.status_mut() = status;
-                response
-                    .headers_mut()
-                    .insert("content-type", HeaderValue::from_static("application/json"));
-                Ok(response)
-            }
+            let document = self.document;
+            std::future::ready(Ok(json_response(status, document)))
         }
 
         fn send_multipart<U>(
@@ -380,9 +392,7 @@ mod in_process {
         where
             U: From<Bytes> + Send + 'static,
         {
-            std::future::ready(Err(rig_core::http_client::Error::instance(
-                std::io::Error::other("no files here"),
-            )))
+            std::future::ready(Err(unsupported("no files here")))
         }
 
         fn send_streaming<T>(
@@ -394,9 +404,7 @@ mod in_process {
         where
             T: Into<Bytes> + Send,
         {
-            std::future::ready(Err(rig_core::http_client::Error::instance(
-                std::io::Error::other("one piece"),
-            )))
+            std::future::ready(Err(unsupported("one piece")))
         }
     }
 
@@ -453,7 +461,7 @@ mod tool_concurrency {
 
     use rig_agent::AgentBuilder;
     use rig_core::http_client::{
-        Bytes, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request, Response, StatusCode,
+        Bytes, HttpClientExt, LazyBody, MultipartForm, Request, Response, StatusCode,
         StreamingResponse,
     };
     use rig_core::providers::openai::OpenAIConfig;
@@ -462,6 +470,7 @@ mod tool_concurrency {
     use serde_json::{Value, json};
     use tokio::sync::Barrier;
 
+    use super::{json_response, unsupported};
     use crate::agent::{AgentError, BuddyAgent, RunBudget};
 
     #[derive(Clone)]
@@ -497,16 +506,7 @@ mod tool_concurrency {
                 "finish_reason":"tool_calls"}],
                 "usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}"#
             };
-            let bytes = Bytes::from_static(document.as_bytes());
-            async move {
-                let mut response =
-                    Response::new(Box::pin(async move { Ok(U::from(bytes)) }) as LazyBody<U>);
-                *response.status_mut() = StatusCode::OK;
-                response
-                    .headers_mut()
-                    .insert("content-type", HeaderValue::from_static("application/json"));
-                Ok(response)
-            }
+            std::future::ready(Ok(json_response(StatusCode::OK, document)))
         }
 
         fn send_multipart<U>(
@@ -519,9 +519,7 @@ mod tool_concurrency {
         where
             U: From<Bytes> + Send + 'static,
         {
-            std::future::ready(Err(rig_core::http_client::Error::instance(
-                std::io::Error::other("no files here"),
-            )))
+            std::future::ready(Err(unsupported("no files here")))
         }
 
         fn send_streaming<T>(
@@ -533,9 +531,7 @@ mod tool_concurrency {
         where
             T: Into<Bytes> + Send,
         {
-            std::future::ready(Err(rig_core::http_client::Error::instance(
-                std::io::Error::other("one piece"),
-            )))
+            std::future::ready(Err(unsupported("one piece")))
         }
     }
 

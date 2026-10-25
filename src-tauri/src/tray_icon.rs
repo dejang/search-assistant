@@ -1,19 +1,7 @@
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, Manager};
 
-use crate::toggle_main_window;
-
-fn show_main_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let was_visible = window.is_visible().unwrap_or(false);
-        let _ = window.show();
-        let _ = window.set_focus();
-        if !was_visible {
-            let _ = window.emit("window-open", ());
-        }
-    }
-}
+use crate::{show_main_window, toggle_main_window};
 
 pub(crate) fn mount(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
     let show = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;

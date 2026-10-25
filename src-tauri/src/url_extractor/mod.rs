@@ -57,7 +57,7 @@ impl UrlExtractor {
         }
     }
 
-    /// The `DuckDuckGo` results page for `query`. Google answers a headless
+    /// The `DuckDuckGo` results page for `query`.
     fn search_url(query: &str) -> String {
         let encoded: String = form_urlencoded::byte_serialize(query.trim().as_bytes()).collect();
         format!("https://html.duckduckgo.com/html/?q={encoded}")
@@ -86,7 +86,7 @@ impl UrlExtractor {
         out
     }
 
-    /// at the pages themselves.
+    /// Search `DuckDuckGo` for `query` and unwrap result redirect links.
     /// # Errors
     /// `ExtractorError` on browser, navigation, or conversion failure.
     pub async fn search(&self, query: &str) -> Result<ExtractedContent, ExtractorError> {
@@ -121,7 +121,7 @@ impl UrlExtractor {
         pages
     }
 
-    /// Returns [`ExtractorError`] on browser, navigation, or conversion failure,
+    /// Navigate to `url` and extract its content as Markdown.
     /// # Errors
     /// `ExtractorError` on failure, or when the driving thread dies.
     pub async fn fetch(&self, url: &str) -> Result<ExtractedContent, ExtractorError> {
@@ -129,8 +129,6 @@ impl UrlExtractor {
     }
 
     /// One page, once a permit says a browser fits.
-    ///
-    /// Returns [`ExtractorError`] on browser, navigation, or conversion failure,
     async fn read(
         pages: &Arc<tokio::sync::Semaphore>,
         url: &str,

@@ -2,17 +2,15 @@
 
 use std::future::Future;
 
-use rig_agent::{AgentBuilder, run::PromptError};
 use rig_core::providers::openai::OpenAI;
 use rig_core::tool::{Tool, ToolContext};
 use rig_core::wasm_compat::WasmCompatSend;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{ReadUrlTool, SearchTool, Tooling};
+use super::Tooling;
 use crate::agent::progress::Researcher;
-use crate::agent::sub_agent_prompt::SUB_PROMPT;
-use crate::agent::{AgentError, RunBudget};
+use crate::agent::{AgentError, BuddyAgent, RunBudget};
 
 /// Spawns a Research Subagent for one sub-question and returns its digest.
 pub struct SubagentTool {
@@ -109,27 +107,12 @@ impl Tool for SubagentTool {
             .progress
             .delegated(Researcher::Lead, &args.sub_question);
         let brief = Self::brief(&args);
-        let agent = AgentBuilder::new(self.provider.chat(self.model.clone()))
-            .preamble(SUB_PROMPT)
-            .tool(SearchTool::new(self.tooling.clone(), Researcher::Subagent))
-            .tool(ReadUrlTool::new(self.tooling.clone(), Researcher::Subagent))
-            .build();
-        let budget = self.budget;
-        async move {
-            let answer = agent
-                .prompt(&brief)
-                .max_turns(budget.turns)
-                .max_consecutive_malformed_tool_calls(budget.retries)
-                .tool_concurrency(budget.tools)
-                .await
-                .map_err(|source: PromptError| AgentError::Completion {
-                    source: Box::new(source),
-                })?;
-            let digest = answer.output();
-            if digest.trim().is_empty() {
-                return Err(AgentError::Empty);
-            }
-            Ok(digest)
-        }
+        let agent = BuddyAgent::subagent(
+            &self.provider,
+            self.model.clone(),
+            self.tooling.clone(),
+            self.budget,
+        );
+        async move { agent.ask(&brief).await }
     }
 }

@@ -23,14 +23,23 @@ use local_engine::{Budget, EngineClient, LocalEngine, Sampling, ServerConfig};
 use model_store::ModelStore;
 use url_extractor::UrlExtractor;
 
+pub(crate) fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let was_visible = window.is_visible().unwrap_or(false);
+        let _ = window.show();
+        let _ = window.set_focus();
+        if !was_visible {
+            let _ = window.emit("window-open", ());
+        }
+    }
+}
+
 pub(crate) fn toggle_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
         } else {
-            let _ = window.show();
-            let _ = window.set_focus();
-            let _ = window.emit("window-open", ());
+            show_main_window(app);
         }
     }
 }

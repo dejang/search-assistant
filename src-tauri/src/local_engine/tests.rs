@@ -404,8 +404,7 @@ mod real_model {
         let name = config
             .binary
             .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
+            .map_or_default(|name| name.to_string_lossy().into_owned());
         println!(
             "one by one {serial:?} {serial_tokens:?}, together {together:?} {together_tokens:?}, {}",
             footprint(&name)
