@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod local_engine;
 pub mod model_store;
+mod tray_icon;
 pub mod url_extractor;
 
 use std::sync::Arc;
@@ -22,7 +23,7 @@ use local_engine::{Budget, EngineClient, LocalEngine, Sampling, ServerConfig};
 use model_store::ModelStore;
 use url_extractor::UrlExtractor;
 
-fn toggle_main_window(app: &tauri::AppHandle) {
+pub(crate) fn toggle_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
@@ -96,6 +97,7 @@ pub fn run() -> Result<(), tauri::Error> {
         .setup(|app| {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             app.global_shortcut().register("alt+shift+space")?;
+            tray_icon::mount(app.handle())?;
             app.manage(Arc::new(UrlExtractor::new(8)));
             app.manage(Arc::new(ResearchProgress::new(app.handle().clone())));
             ModelStore::start(app.handle(), "Qwen", "Qwen3-8B-GGUF", "Q4_K_M");

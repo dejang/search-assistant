@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
 # `log::info!` writes nowhere without a logger; this one prints to stdout under
@@ -56,6 +56,9 @@ thiserror = "2"
 # current-thread runtime, the only flavor one isolate tolerates, and `sync` gives
 # it the permits that bound how many run at once.
 tokio = { version = "1", features = ["time", "macros", "rt", "net", "sync"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time"] }
