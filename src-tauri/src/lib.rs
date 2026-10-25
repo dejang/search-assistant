@@ -107,7 +107,7 @@ pub fn run() -> Result<(), tauri::Error> {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             app.global_shortcut().register("alt+shift+space")?;
             tray_icon::mount(app.handle())?;
-            app.manage(Arc::new(UrlExtractor::new(8)));
+            app.manage(Arc::new(UrlExtractor::default()));
             app.manage(Arc::new(ResearchProgress::new(app.handle().clone())));
             ModelStore::start(app.handle(), "Qwen", "Qwen3-8B-GGUF", "Q4_K_M");
             let store = app

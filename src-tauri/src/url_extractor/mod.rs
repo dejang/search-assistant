@@ -1,16 +1,16 @@
-//! URL Extractor — visit a URL with a headless browser and return its content as Markdown.
+//! URL Extractor — coordinates concurrent page extraction and search redirect unwrapping.
 
 mod convert;
-
-#[cfg(test)]
-mod tests;
-
-pub use convert::html_to_markdown;
+mod page;
+mod search;
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use obscura::Browser;
 use thiserror::Error;
+
+pub use self::page::{ObscuraPageExtractor, PageExtractor};
+use self::search::{search_url, unwrap_redirects};
 
 #[derive(Error, Debug)]
 pub enum ExtractorError {
@@ -19,6 +19,15 @@ pub enum ExtractorError {
 
     #[error("navigation failed for {url}: {reason}")]
     Navigation { url: String, reason: String },
+
+    #[error("unexpected status {status} for {url}")]
+    HttpStatus { url: String, status: u16 },
+
+    #[error("unsupported content type {content_type} for {url}")]
+    UnsupportedContentType { url: String, content_type: String },
+
+    #[error("navigation to {url} timed out after {timeout:?}")]
+    TimedOut { url: String, timeout: Duration },
 
     #[error("conversion failed: {0}")]
     Conversion(String),
@@ -43,55 +52,59 @@ pub struct ExtractedContent {
     pub markdown: String,
 }
 
-/// Reads pages through `obscura`, at most `parallelism` pages at once.
-pub struct UrlExtractor {
+/// Coordinates page extraction across worker threads bounded by a concurrency semaphore.
+pub struct UrlExtractor<P = ObscuraPageExtractor> {
     pages: Arc<tokio::sync::Semaphore>,
+    page_extractor: Arc<P>,
+    timeout: Duration,
+    search_base: String,
 }
 
-impl UrlExtractor {
-    /// An extractor running at most `parallelism` pages at once.
+impl Default for UrlExtractor<ObscuraPageExtractor> {
+    fn default() -> Self {
+        Self::with_page_extractor(ObscuraPageExtractor)
+    }
+}
+
+impl<P: PageExtractor> UrlExtractor<P> {
+    /// Build an extractor backed by `page_extractor` with default parallelism and timeout.
     #[must_use]
-    pub fn new(parallelism: usize) -> Self {
+    pub fn with_page_extractor(page_extractor: P) -> Self {
         Self {
-            pages: Arc::new(tokio::sync::Semaphore::new(parallelism.max(1))),
+            pages: Arc::new(tokio::sync::Semaphore::new(8)),
+            page_extractor: Arc::new(page_extractor),
+            timeout: Duration::from_secs(15),
+            search_base: "https://html.duckduckgo.com/html/".to_string(),
         }
     }
 
-    /// The `DuckDuckGo` results page for `query`.
-    fn search_url(query: &str) -> String {
-        let encoded: String = form_urlencoded::byte_serialize(query.trim().as_bytes()).collect();
-        format!("https://html.duckduckgo.com/html/?q={encoded}")
+    /// Cap concurrent page loads to `parallelism`.
+    #[must_use]
+    pub fn parallelism(mut self, parallelism: usize) -> Self {
+        self.pages = Arc::new(tokio::sync::Semaphore::new(parallelism.max(1)));
+        self
     }
 
-    /// `DuckDuckGo` routes every result through `/l/?uddg=<target>&rut=<signature>`
-    /// and encodes the target as a query value, so the wrapper comes off here.
-    fn unwrap_redirects(markdown: &str) -> String {
-        let marker = "](//duckduckgo.com/l/?";
-        let mut out = String::with_capacity(markdown.len());
-        let mut rest = markdown;
-        while let Some(at) = rest.find(marker) {
-            let from = at + marker.len();
-            let to = from + rest[from..].find(')').unwrap_or(rest.len() - from);
-            let query = &rest[from..to];
-            let target = form_urlencoded::parse(query.as_bytes())
-                .find(|(key, _)| key == "uddg")
-                .map_or_else(|| query.to_string(), |(_, value)| value.into_owned());
-            out.push_str(&rest[..at]);
-            out.push_str("](");
-            out.push_str(&target);
-            out.push(')');
-            rest = rest[to..].strip_prefix(')').unwrap_or(&rest[to..]);
-        }
-        out.push_str(rest);
-        out
+    /// Bound each page load to `timeout`.
+    #[must_use]
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Override the search results endpoint URL.
+    #[must_use]
+    pub fn with_search_base(mut self, base: impl Into<String>) -> Self {
+        self.search_base = base.into();
+        self
     }
 
     /// Search `DuckDuckGo` for `query` and unwrap result redirect links.
     /// # Errors
-    /// `ExtractorError` on browser, navigation, or conversion failure.
+    /// `ExtractorError` on browser, navigation, status, timeout, or conversion failure.
     pub async fn search(&self, query: &str) -> Result<ExtractedContent, ExtractorError> {
-        let mut content = self.fetch(&Self::search_url(query)).await?;
-        content.markdown = Self::unwrap_redirects(&content.markdown);
+        let mut content = self.fetch(&search_url(&self.search_base, query)).await?;
+        content.markdown = unwrap_redirects(&content.markdown);
         Ok(content)
     }
 
@@ -104,10 +117,12 @@ impl UrlExtractor {
         let mut running = Vec::with_capacity(urls.len());
         for url in urls {
             let pages = Arc::clone(&self.pages);
+            let extractor = Arc::clone(&self.page_extractor);
             let url = url.clone();
-            running.push(tokio::task::spawn(
-                async move { Self::read(&pages, &url).await },
-            ));
+            let timeout = self.timeout;
+            running.push(tokio::task::spawn(async move {
+                Self::read(&pages, &extractor, &url, timeout).await
+            }));
         }
         let mut pages = Vec::with_capacity(urls.len());
         for handle in running {
@@ -125,64 +140,61 @@ impl UrlExtractor {
     /// # Errors
     /// `ExtractorError` on failure, or when the driving thread dies.
     pub async fn fetch(&self, url: &str) -> Result<ExtractedContent, ExtractorError> {
-        Self::read(&self.pages, url).await
+        Self::read(&self.pages, &self.page_extractor, url, self.timeout).await
     }
 
-    /// One page, once a permit says a browser fits.
+    /// One page, once a permit says a worker fits.
     async fn read(
         pages: &Arc<tokio::sync::Semaphore>,
+        extractor: &Arc<P>,
         url: &str,
+        timeout: Duration,
     ) -> Result<ExtractedContent, ExtractorError> {
-        let page = Arc::clone(pages)
+        let permit = Arc::clone(pages)
             .acquire_owned()
             .await
             .map_err(|e| ExtractorError::Browser(e.to_string()))?;
+        let extractor = Arc::clone(extractor);
         let url = url.to_string();
         tauri::async_runtime::spawn_blocking(move || {
-            let _page = page;
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| ExtractorError::Browser(e.to_string()))
-                .and_then(|runtime| runtime.block_on(UrlExtractor::load(&url)))
+            let _permit = permit;
+            extractor.extract(&url, timeout)
         })
         .await
         .map_err(|e| ExtractorError::Browser(e.to_string()))?
     }
+}
 
-    /// One browser, opened here and dropped here, on the runtime `read` built.
-    ///
-    /// Returns [`ExtractorError`] on browser, navigation, or conversion failure.
-    async fn load(url: &str) -> Result<ExtractedContent, ExtractorError> {
-        let browser = Browser::builder()
-            .build()
-            .map_err(|e| ExtractorError::Browser(e.to_string()))?;
-        let mut page = browser
-            .new_page()
-            .await
-            .map_err(|e| ExtractorError::Browser(e.to_string()))?;
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
 
-        page.goto(url)
-            .await
-            .map_err(|e| ExtractorError::Navigation {
+    use super::{ExtractedContent, ExtractorError, PageExtractor, UrlExtractor};
+
+    struct StubPageExtractor;
+
+    impl PageExtractor for StubPageExtractor {
+        fn extract(
+            &self,
+            url: &str,
+            _timeout: Duration,
+        ) -> Result<ExtractedContent, ExtractorError> {
+            Ok(ExtractedContent {
                 url: url.to_string(),
-                reason: e.to_string(),
-            })?;
+                title: "Stub".to_string(),
+                markdown: "[Link](//duckduckgo.com/l/?uddg=https%3A%2F%2Frust-lang.org&rut=1)"
+                    .to_string(),
+            })
+        }
+    }
 
-        let final_url = page.url();
-        let html = page.content();
+    #[tokio::test]
+    async fn search_queries_configured_base_and_unwraps_redirects_without_browser() {
+        let extractor = UrlExtractor::with_page_extractor(StubPageExtractor)
+            .with_search_base("https://search.example/html/");
 
-        // Extract title via JS
-        let title_val = page.evaluate("document.title");
-        let title = title_val.as_str().unwrap_or("").to_string();
-
-        let markdown = convert::html_to_markdown(&html)
-            .map_err(|e| ExtractorError::Conversion(e.to_string()))?;
-
-        Ok(ExtractedContent {
-            url: final_url,
-            title,
-            markdown,
-        })
+        let page = extractor.search("rust").await.unwrap();
+        assert_eq!(page.url, "https://search.example/html/?q=rust");
+        assert_eq!(page.markdown, "[Link](https://rust-lang.org)");
     }
 }
