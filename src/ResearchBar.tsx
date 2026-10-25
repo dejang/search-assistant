@@ -1,9 +1,12 @@
 import * as React from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Icon } from './components/ui/icons/Icon';
 import { ModelProgress } from './ModelProgress';
 import { useModelDownload } from './useModelDownload';
 import { TextField } from './components/ui/TextField';
+
+type EngineStatus = 'online' | 'offline';
 
 const pillStyle: React.CSSProperties = {
   height: '64px',
@@ -22,11 +25,13 @@ interface ResearchBarProps {
 export function ResearchBar({ onSubmit }: ResearchBarProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [value, setValue] = React.useState('');
+  const [engineStatus, setEngineStatus] = React.useState<EngineStatus | null>(null);
   const { status, shown, retry } = useModelDownload();
 
-  // Nothing can be answered until the model is on disk, so the field is closed
-  // for business rather than accepting a question that would go nowhere.
   const downloading = status?.phase === 'downloading';
+  const disabled = downloading || engineStatus !== 'online';
+  const showEngineError =
+    engineStatus === 'offline' && !downloading && status?.phase !== 'failed';
 
   const handleChange = React.useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value),
@@ -51,6 +56,34 @@ export function ResearchBar({ onSubmit }: ResearchBarProps) {
     [submit],
   );
 
+  // Subscribe to engine status changes and read initial snapshot.
+  React.useEffect(() => {
+    let active = true;
+    let eventsSeen = 0;
+    const unlisten = listen<EngineStatus>('engine://status', (event) => {
+      eventsSeen += 1;
+      if (active) {
+        setEngineStatus(event.payload);
+      }
+    });
+    unlisten
+      .then(() => {
+        const seen = eventsSeen;
+        return invoke<EngineStatus | null>('engine_status').then((snapshot) => {
+          if (active && eventsSeen === seen) {
+            setEngineStatus(snapshot);
+          }
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      unlisten
+        .then((dispose) => dispose())
+        .catch(() => undefined);
+    };
+  }, []);
+
   // Focus input when the window is shown via global shortcut
   React.useEffect(() => {
     const unlisten = listen('window-open', () => {
@@ -66,13 +99,12 @@ export function ResearchBar({ onSubmit }: ResearchBarProps) {
     };
   }, []);
 
-  // A disabled field cannot take focus, so this runs again when the download
-  // ends and the question becomes answerable.
+  // A disabled field cannot take focus, so focus when the engine comes online.
   React.useEffect(() => {
-    if (!downloading) {
+    if (!disabled) {
       inputRef.current?.focus();
     }
-  }, [downloading]);
+  }, [disabled]);
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-transparent px-10 py-14">
@@ -110,18 +142,26 @@ export function ResearchBar({ onSubmit }: ResearchBarProps) {
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            disabled={downloading}
+            disabled={disabled}
             placeholder="What would you like to research?"
             spellCheck={false}
             autoComplete="off"
             aria-label={
-              downloading ? 'Research query, unavailable while the model downloads' : 'Research query'
+              disabled ? 'Research query, unavailable while the engine is offline' : 'Research query'
             }
             className="flex-1 min-w-0"
           />
         </div>
 
         <ModelProgress status={status} shown={shown} onRetry={retry} />
+
+        {showEngineError && (
+          <div className="pointer-events-none absolute inset-x-0 top-full mt-4 flex items-center gap-2 px-6">
+            <span className="pointer-events-auto truncate text-pn-small text-red-text">
+              no agent can be used at this point
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

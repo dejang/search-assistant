@@ -4,13 +4,12 @@
 #![recursion_limit = "512"]
 
 pub mod agent;
-pub mod local_engine;
+pub mod inference_engine;
 pub mod model_store;
 mod tray_icon;
 pub mod url_extractor;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
@@ -19,7 +18,7 @@ use agent::BuddyAgent;
 use agent::RunBudget;
 use agent::progress::ResearchProgress;
 use agent::tools::Tooling;
-use local_engine::{Budget, EngineClient, LocalEngine, Sampling, ServerConfig};
+use inference_engine::{Engine, EngineStatus, InferenceEngine, get_inference_engine};
 use model_store::ModelStore;
 use url_extractor::UrlExtractor;
 
@@ -44,21 +43,39 @@ pub(crate) fn toggle_main_window(app: &tauri::AppHandle) {
     }
 }
 
-fn mount_agent(app: &tauri::AppHandle) {
-    let engine = Arc::clone(&app.state::<Arc<LocalEngine>>());
-    let extractor = Arc::clone(&app.state::<Arc<UrlExtractor>>());
-    let progress = Arc::clone(&app.state::<Arc<ResearchProgress>>());
-    let agent = BuddyAgent::with_research(
-        EngineClient::new(engine),
-        "qwen3-8b",
-        Tooling::new(extractor, progress, 8_000),
-        RunBudget {
-            turns: 12,
-            retries: 3,
-            tools: 4,
-        },
-    );
-    app.manage(Arc::new(agent));
+fn start_engine(app: &tauri::AppHandle) {
+    let handle = app.clone();
+    drop(tauri::async_runtime::spawn(async move {
+        if let Some(store) = handle.try_state::<Arc<ModelStore>>() {
+            while store.status().phase == model_store::DownloadPhase::Downloading {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+        match get_inference_engine(&handle).await {
+            Ok(engine) => {
+                let extractor = Arc::clone(&handle.state::<Arc<UrlExtractor>>());
+                let progress = Arc::clone(&handle.state::<Arc<ResearchProgress>>());
+                let agent = BuddyAgent::with_research(
+                    engine.endpoint(),
+                    "qwen3-8b",
+                    Tooling::new(extractor, progress, 8_000),
+                    RunBudget {
+                        turns: 12,
+                        retries: 3,
+                        tools: 4,
+                    },
+                );
+                handle.manage(Arc::new(engine));
+                handle.manage(Arc::new(agent));
+                let _ = handle.emit("engine://status", EngineStatus::Online);
+            }
+            Err(err) => {
+                log::error!("Failed to initialize inference engine: {err}");
+                handle.manage(EngineStatus::Offline);
+                let _ = handle.emit("engine://status", EngineStatus::Offline);
+            }
+        }
+    }));
 }
 
 #[tauri::command]
@@ -110,51 +127,21 @@ pub fn run() -> Result<(), tauri::Error> {
             app.manage(Arc::new(UrlExtractor::default()));
             app.manage(Arc::new(ResearchProgress::new(app.handle().clone())));
             ModelStore::start(app.handle(), "Qwen", "Qwen3-8B-GGUF", "Q4_K_M");
-            let store = app
-                .handle()
-                .try_state::<Arc<ModelStore>>()
-                .map(|store| Arc::clone(&store));
-            LocalEngine::start(
-                app.handle(),
-                store,
-                Budget {
-                    idle: Duration::from_secs(120),
-                    load: Duration::from_secs(300),
-                    answer: Duration::from_secs(120),
-                },
-                ServerConfig {
-                    binary: std::env::current_exe()?.with_file_name("llama-server"),
-                    slots: 4,
-                    slot_context: 16_384,
-                    cache_mib: 2_048,
-                    sampling: Sampling {
-                        temperature: 0.7,
-                        top_p: 0.8,
-                        top_k: 20,
-                        min_p: 0.0,
-                    },
-                    log: app
-                        .path()
-                        .app_log_dir()
-                        .ok()
-                        .map(|dir| dir.join("llama-server.log")),
-                },
-            );
-            mount_agent(app.handle());
+            start_engine(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             hide_window,
             set_research_view,
             agent::research_ask,
-            local_engine::engine_status,
+            inference_engine::engine_status,
             model_store::model_download,
             model_store::model_download_status
         ])
         .build(tauri::generate_context!())?
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event
-                && let Some(engine) = app.try_state::<Arc<LocalEngine>>()
+                && let Some(engine) = app.try_state::<Arc<InferenceEngine>>()
             {
                 engine.shutdown();
             }

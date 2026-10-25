@@ -13,7 +13,7 @@ use rig_core::client::env::EnvError;
 use rig_core::http_client::HttpClientExt;
 use rig_core::providers::openai::{OpenAI, OpenAIConfig};
 use rig_core::wire::Secret;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 use thiserror::Error;
 
 use self::main_prompt::MAIN_PROMPT;
@@ -21,6 +21,7 @@ use self::progress::Researcher;
 use self::sub_agent_prompt::SUB_PROMPT;
 use self::tools::{ReadUrlTool, SearchTool, SubagentTool, Tooling};
 use crate::agent::progress::ResearchProgress;
+use crate::inference_engine::{Engine, EngineStatus, InferenceEngine};
 
 #[derive(Error, Debug)]
 pub enum AgentError {
@@ -49,6 +50,10 @@ pub enum AgentError {
     /// Another question is already being answered by the one local model.
     #[error("a question is still being answered; it cannot be cancelled")]
     Busy,
+
+    /// No inference engine is available to answer questions.
+    #[error("no agent can be used at this point")]
+    Unavailable,
 }
 
 impl AgentError {
@@ -57,7 +62,11 @@ impl AgentError {
     pub fn status(&self) -> Option<u16> {
         match self {
             Self::Completion { source } => source.provider_response_status().map(|s| s.as_u16()),
-            Self::Config { .. } | Self::Empty | Self::TimedOut { .. } | Self::Busy => None,
+            Self::Config { .. }
+            | Self::Empty
+            | Self::TimedOut { .. }
+            | Self::Busy
+            | Self::Unavailable => None,
         }
     }
 }
@@ -135,14 +144,14 @@ impl BuddyAgent {
     /// The lead researcher: `MAIN_PROMPT` as its preamble, and the three tools
     /// it works through. `budget` bounds its own run and every subagent's.
     #[must_use]
-    pub fn with_research<C: HttpClientExt + 'static>(
-        client: C,
+    pub fn with_research(
+        endpoint: impl Into<String>,
         model: impl Into<String>,
         tooling: Tooling,
         budget: RunBudget,
     ) -> Self {
         let model = model.into();
-        let provider = local_provider(client);
+        let provider = OpenAIConfig::new("local").with_base_url(endpoint).client();
         let inner = AgentBuilder::new(provider.chat(model.clone()))
             .preamble(MAIN_PROMPT)
             .tool(SearchTool::new(tooling.clone(), Researcher::Lead))
@@ -238,12 +247,26 @@ impl BuddyAgent {
 /// # Errors
 /// Mirrors `BuddyAgent::ask`.
 pub async fn research_ask(
-    agent: State<'_, Arc<BuddyAgent>>,
+    app: tauri::AppHandle,
     progress: State<'_, Arc<ResearchProgress>>,
     prompt: String,
 ) -> Result<String, AgentError> {
+    let Some(engine) = app.try_state::<Arc<InferenceEngine>>() else {
+        return Err(AgentError::Unavailable);
+    };
+    if !engine.is_online() {
+        let _ = app.emit("engine://status", EngineStatus::Offline);
+        return Err(AgentError::Unavailable);
+    }
+    let Some(agent) = app.try_state::<Arc<BuddyAgent>>() else {
+        return Err(AgentError::Unavailable);
+    };
     let _run = progress.begin().ok_or(AgentError::Busy)?;
-    agent.ask(&prompt).await
+    let result = agent.ask(&prompt).await;
+    if !engine.is_online() {
+        let _ = app.emit("engine://status", EngineStatus::Offline);
+    }
+    result
 }
 
 #[cfg(test)]
