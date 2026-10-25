@@ -51,7 +51,7 @@ const panelStyle: React.CSSProperties = {
   background: 'var(--menu-bg)',
   backdropFilter: 'blur(var(--blur-material)) saturate(var(--material-saturation))',
   WebkitBackdropFilter: 'blur(var(--blur-material)) saturate(var(--material-saturation))',
-  boxShadow: 'var(--shadow-window)',
+  boxShadow: '0 4px 16px rgba(0,0,0,0.28), 0 1px 3px rgba(0,0,0,0.12)',
 };
 
 const WHO: Record<Researcher, string> = { lead: 'Lead', subagent: 'Subagent' };
