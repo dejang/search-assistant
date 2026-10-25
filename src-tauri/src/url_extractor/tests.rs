@@ -1,7 +1,4 @@
 //! Tests for the url_extractor module.
-//!
-//! Unit tests verify HTML→Markdown conversion with fixture strings.
-//! Integration tests spin up a local HTTP server and use obscura to fetch pages.
 
 use super::convert::html_to_markdown;
 

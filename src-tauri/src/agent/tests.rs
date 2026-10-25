@@ -1,8 +1,5 @@
 //! Tests for the agent module: unit tests pin the error contract the UI renders;
-//! endpoint tests drive a real request against a local HTTP server.
 
-/// The first line of a captured request, for assertion messages. Never dump a
-/// whole request: it carries the `Authorization` header.
 #[must_use]
 fn request_line(request: &str) -> &str {
     request.lines().next().unwrap_or_default()
@@ -77,7 +74,11 @@ mod error_contract {
             },
         };
 
-        assert_eq!(config.status(), None, "an unanswered config error has no status");
+        assert_eq!(
+            config.status(),
+            None,
+            "an unanswered config error has no status"
+        );
         assert_eq!(AgentError::Empty.status(), None);
         assert_eq!(
             AgentError::TimedOut {
@@ -105,10 +106,6 @@ mod endpoint {
     use tokio::net::{TcpListener, TcpStream};
 
     /// Read a full request: headers to the blank line, then the declared body.
-    /// Answering before the body is drained makes the peer reset, which surfaces
-    /// as a transport error and would let a status assertion pass with no reply.
-    /// Assumes a `Content-Length` body; a chunked request would be answered
-    /// early and the `status()` assertions would then fail loudly.
     async fn read_request(stream: &mut TcpStream) -> String {
         let mut buf: Vec<u8> = Vec::new();
         let mut chunk = [0u8; 1024];
@@ -203,12 +200,9 @@ mod endpoint {
         prompt: &str,
         serve: impl Future<Output = String>,
     ) -> (Result<String, AgentError>, String) {
-        tokio::time::timeout(
-            Duration::from_secs(20),
-            async {
-                tokio::join!(agent.ask_within(prompt, Duration::from_secs(10)), serve)
-            },
-        )
+        tokio::time::timeout(Duration::from_secs(20), async {
+            tokio::join!(agent.ask_within(prompt, Duration::from_secs(10)), serve)
+        })
         .await
         .unwrap_or_else(|_| panic!("the exchange did not finish inside the test ceiling"))
     }
@@ -232,7 +226,9 @@ mod endpoint {
             request_line(&request)
         );
         assert!(
-            request.to_ascii_lowercase().contains("authorization: bearer"),
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer"),
             "no bearer credential was sent: {}",
             request_line(&request)
         );
@@ -326,5 +322,125 @@ mod endpoint {
         }
 
         drop(listener);
+    }
+}
+
+#[cfg(test)]
+mod in_process {
+    use crate::agent::BuddyAgent;
+    use rig_core::http_client::{
+        Bytes, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request, Response, StatusCode,
+        StreamingResponse,
+    };
+
+    #[derive(Clone)]
+    struct Engine {
+        status: u16,
+        document: &'static str,
+    }
+
+    impl HttpClientExt for Engine {
+        fn send<T, U>(
+            &self,
+            request: Request<T>,
+        ) -> impl std::future::Future<
+            Output = Result<Response<LazyBody<U>>, rig_core::http_client::Error>,
+        > + Send
+        + 'static
+        where
+            T: Into<Bytes> + Send,
+            U: From<Bytes> + Send + 'static,
+        {
+            assert!(
+                request.uri().path().ends_with("/chat/completions"),
+                "the wire asked for {}",
+                request.uri(),
+            );
+
+            let bytes = Bytes::from_static(self.document.as_bytes());
+            let status = StatusCode::from_u16(self.status).unwrap();
+            async move {
+                let mut response =
+                    Response::new(Box::pin(async move { Ok(U::from(bytes)) }) as LazyBody<U>);
+                *response.status_mut() = status;
+                response
+                    .headers_mut()
+                    .insert("content-type", HeaderValue::from_static("application/json"));
+                Ok(response)
+            }
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _request: Request<MultipartForm>,
+        ) -> impl std::future::Future<
+            Output = Result<Response<LazyBody<U>>, rig_core::http_client::Error>,
+        > + Send
+        + 'static
+        where
+            U: From<Bytes> + Send + 'static,
+        {
+            std::future::ready(Err(rig_core::http_client::Error::instance(
+                std::io::Error::other("no files here"),
+            )))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _request: Request<T>,
+        ) -> impl std::future::Future<
+            Output = Result<StreamingResponse, rig_core::http_client::Error>,
+        > + Send
+        where
+            T: Into<Bytes> + Send,
+        {
+            std::future::ready(Err(rig_core::http_client::Error::instance(
+                std::io::Error::other("one piece"),
+            )))
+        }
+    }
+
+    #[tokio::test]
+    async fn the_agent_answers_from_a_client_in_this_process() {
+        let answer = r#"{"id":"chatcmpl-local","object":"chat.completion","created":1,
+            "model":"qwen3-8b",
+            "choices":[{"index":0,"message":{"role":"assistant","content":"Four."},
+            "finish_reason":"stop"}],
+            "usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}"#;
+        let agent = BuddyAgent::with_client(
+            Engine {
+                status: 200,
+                document: answer,
+            },
+            "qwen3-8b",
+            "Answer briefly.",
+        );
+
+        assert_eq!(agent.ask("What is 2 + 2?").await.unwrap(), "Four.");
+    }
+
+    #[tokio::test]
+    async fn an_in_process_failure_keeps_the_status_the_ui_branches_on() {
+        let refusal = r#"{"error":{"message":"the model is not answering right now",
+            "type":"engine_unavailable"}}"#;
+        let agent = BuddyAgent::with_client(
+            Engine {
+                status: 503,
+                document: refusal,
+            },
+            "qwen3-8b",
+            "Answer briefly.",
+        );
+
+        let error = agent
+            .ask("What is 2 + 2?")
+            .await
+            .expect_err("a dead engine fails the turn");
+
+        assert_eq!(error.status(), Some(503));
+        assert!(
+            error.to_string().contains("not answering"),
+            "the sentence the webview shows carries the engine's reason: {error}"
+        );
     }
 }

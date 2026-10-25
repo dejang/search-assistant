@@ -78,10 +78,6 @@ impl serde::Serialize for ModelStoreError {
 }
 
 /// The Hub client, with the timeouts `hf-hub` does not set for you.
-///
-/// `read_timeout` applies to each read and resets when a byte arrives, so a dead
-/// connection fails the download instead of hanging the bar forever, while a
-/// slow but living several-gigabyte transfer is never cut off.
 fn hub_client() -> Result<HFClient, ModelStoreError> {
     let http = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(30))
@@ -248,6 +244,15 @@ impl ModelStore {
         holds_a_model(&self.dir, &self.quant)
     }
 
+    #[must_use]
+    pub fn model_files(&self) -> Vec<PathBuf> {
+        let token = self.quant.to_lowercase();
+        files(&self.dir)
+            .into_iter()
+            .filter(|path| carries_quant(path, &token))
+            .collect()
+    }
+
     /// The status a freshly mounted webview should render.
     #[must_use]
     pub fn status(&self) -> DownloadStatus {
@@ -258,12 +263,9 @@ impl ModelStore {
             .clone()
     }
 
-    /// Fetch the model. The app calls this when it is not downloaded.
-    ///
-    /// # Errors
-    ///
     /// Anything the Hub or the disk can refuse. The same failure is published
-    /// as a `failed` status, so a webview that did not await this sees it too.
+    /// # Errors
+    /// Anything the Hub or the disk can refuse; also published as `failed`.
     pub async fn download(&self) -> Result<(), ModelStoreError> {
         if self.downloading.swap(true, Ordering::SeqCst) {
             return Ok(());
@@ -347,14 +349,22 @@ impl ModelStore {
 /// Whether `dir` holds a model of this quant, at any depth.
 fn holds_a_model(dir: &Path, quant: &str) -> bool {
     let token = quant.to_lowercase();
-    files(dir).iter().any(|path| {
-        path.extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"))
-            && path
-                .file_name()
-                .is_some_and(|name| name.to_string_lossy().to_lowercase().contains(&token))
-            && path.metadata().is_ok_and(|meta| meta.len() > 0)
-    })
+    files(dir).iter().any(|path| carries_quant(path, &token))
+}
+
+fn carries_quant(path: &Path, token: &str) -> bool {
+    let Some(name) = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_lowercase())
+    else {
+        return false;
+    };
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"))
+        && !name.contains("mmproj")
+        && !name.contains("imatrix")
+        && name.contains(token)
+        && path.metadata().is_ok_and(|meta| meta.len() > 0)
 }
 
 /// The repository paths carrying this quant. Taking every one of them is what
@@ -399,12 +409,10 @@ fn files(dir: &Path) -> Vec<PathBuf> {
     found
 }
 
-/// Fetch the model in the background unless it is already on disk.
-///
-/// # Errors
-///
 /// Mirrors [`ModelStore::download`], which also publishes the failure.
 #[tauri::command]
+/// # Errors
+/// Mirrors `ModelStore::download`, which also publishes the failure.
 pub async fn model_download(store: State<'_, Arc<ModelStore>>) -> Result<(), ModelStoreError> {
     store.download().await
 }

@@ -1,8 +1,4 @@
 //! URL Extractor — visit a URL with a headless browser and return its content as Markdown.
-//!
-//! Uses [obscura](https://github.com/h4ckf0r0day/obscura) for browsing and
-//! [htmd](https://crates.io/crates/htmd) for HTML→Markdown, links preserved.
-//! [`search_web`] is the command the webview calls with a research query.
 
 mod convert;
 
@@ -49,10 +45,6 @@ pub struct ExtractedContent {
 }
 
 /// Reads pages through `obscura`, at most `parallelism` pages at once.
-///
-/// Each read builds its own browser on a blocking thread driving a single-threaded
-/// runtime: `deno_core`'s re-entrancy guard is thread-local, so two isolates may not
-/// interleave on one thread. Permits bound how many run at once, not correctness.
 pub struct UrlExtractor {
     pages: Arc<tokio::sync::Semaphore>,
 }
@@ -67,9 +59,6 @@ impl UrlExtractor {
     }
 
     /// The `DuckDuckGo` results page for `query`. Google answers a headless
-    /// browser with a captcha, on any network that has not already been
-    /// trusted, so the query goes to the engine that answers. Its HTML endpoint
-    /// is static and caps a page near 30 results, short of the 50 wanted.
     fn search_url(query: &str) -> String {
         let encoded: String = form_urlencoded::byte_serialize(query.trim().as_bytes()).collect();
         format!("https://html.duckduckgo.com/html/?q={encoded}")
@@ -98,12 +87,9 @@ impl UrlExtractor {
         out
     }
 
-    /// The page `query` returns on `DuckDuckGo`, with its result links pointing
     /// at the pages themselves.
-    ///
     /// # Errors
-    ///
-    /// Returns [`ExtractorError`] on browser, navigation, or conversion failure.
+    /// `ExtractorError` on browser, navigation, or conversion failure.
     pub async fn search(&self, query: &str) -> Result<ExtractedContent, ExtractorError> {
         let mut content = self.fetch(&Self::search_url(query)).await?;
         content.markdown = Self::unwrap_redirects(&content.markdown);
@@ -112,11 +98,6 @@ impl UrlExtractor {
 
     /// Navigate to each `url` and extract its content, all at once, in the
     /// order given. One page failing says nothing about the others.
-    ///
-    /// # Errors
-    ///
-    /// Each entry carries its own [`ExtractorError`], or the failure of the
-    /// thread that drove that page.
     pub async fn fetch_all(
         &self,
         urls: &[String],
@@ -141,22 +122,16 @@ impl UrlExtractor {
         pages
     }
 
-    /// Navigate to `url` and extract its content as Markdown.
-    ///
-    /// # Errors
-    ///
     /// Returns [`ExtractorError`] on browser, navigation, or conversion failure,
-    /// or when the thread driving the browser dies.
+    /// # Errors
+    /// `ExtractorError` on failure, or when the driving thread dies.
     pub async fn fetch(&self, url: &str) -> Result<ExtractedContent, ExtractorError> {
         Self::read(&self.pages, url).await
     }
 
     /// One page, once a permit says a browser fits.
     ///
-    /// # Errors
-    ///
     /// Returns [`ExtractorError`] on browser, navigation, or conversion failure,
-    /// or when the thread driving the browser dies.
     async fn read(
         pages: &Arc<tokio::sync::Semaphore>,
         url: &str,
@@ -179,8 +154,6 @@ impl UrlExtractor {
     }
 
     /// One browser, opened here and dropped here, on the runtime `read` built.
-    ///
-    /// # Errors
     ///
     /// Returns [`ExtractorError`] on browser, navigation, or conversion failure.
     async fn load(url: &str) -> Result<ExtractedContent, ExtractorError> {
@@ -217,12 +190,9 @@ impl UrlExtractor {
     }
 }
 
-/// Extract the `DuckDuckGo` results page for `query`, and log what it said.
-///
-/// # Errors
-///
 /// Returns [`ExtractorError`] if the browser cannot start, the navigation
-/// fails, or the page will not convert.
+/// # Errors
+/// `ExtractorError` if the browser cannot start or the page will not convert.
 #[tauri::command]
 pub async fn search_web(
     extractor: State<'_, Arc<UrlExtractor>>,

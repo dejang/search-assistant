@@ -1,11 +1,6 @@
-//! HTML → Markdown conversion with link preservation.
-
 /// Convert an HTML string to Markdown, preserving links.
-/// Strips `<script>`, `<style>`, and `<noscript>` before htmd conversion.
-///
 /// # Errors
-///
-/// Returns an I/O error if the HTML cannot be parsed.
+/// An I/O error if the HTML cannot be parsed.
 pub fn html_to_markdown(html: &str) -> Result<String, std::io::Error> {
     let cleaned = strip_non_content(html);
     htmd::convert(&cleaned)
