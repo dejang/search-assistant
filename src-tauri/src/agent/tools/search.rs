@@ -9,11 +9,11 @@ use serde_json::{Value, json};
 
 use super::{Tooling, headed};
 use crate::agent::progress::Researcher;
-use crate::url_extractor::ExtractorError;
+use crate::url_extractor::{ExtractorError, ObscuraPageExtractor, PageExtractor};
 
 /// Runs a web search and returns the results page as Markdown.
-pub struct SearchTool {
-    tooling: Tooling,
+pub struct SearchTool<P = ObscuraPageExtractor> {
+    tooling: Tooling<P>,
     by: Researcher,
 }
 
@@ -24,14 +24,14 @@ pub struct SearchArgs {
     pub query: String,
 }
 
-impl SearchTool {
+impl<P> SearchTool<P> {
     #[must_use]
-    pub fn new(tooling: Tooling, by: Researcher) -> Self {
+    pub fn new(tooling: Tooling<P>, by: Researcher) -> Self {
         Self { tooling, by }
     }
 }
 
-impl Tool for SearchTool {
+impl<P: PageExtractor + 'static> Tool for SearchTool<P> {
     const NAME: &'static str = "search";
     type Args = SearchArgs;
     type Output = String;

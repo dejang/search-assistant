@@ -1,23 +1,20 @@
 //! The `subagent` tool: one focused web researcher on its own prompt.
 
 use std::future::Future;
+use std::sync::Arc;
 
-use rig_core::providers::openai::OpenAI;
 use rig_core::tool::{Tool, ToolContext};
 use rig_core::wasm_compat::WasmCompatSend;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::Tooling;
-use crate::agent::progress::Researcher;
-use crate::agent::{AgentError, BuddyAgent, RunBudget};
+use crate::agent::progress::{ResearchProgress, Researcher};
+use crate::agent::{Agent, AgentError};
 
 /// Spawns a Research Subagent for one sub-question and returns its digest.
 pub struct SubagentTool {
-    provider: OpenAI,
-    model: String,
-    tooling: Tooling,
-    budget: RunBudget,
+    subagent: Arc<Agent>,
+    progress: Arc<ResearchProgress>,
 }
 
 /// The four fields the orchestrator's task brief is made of.
@@ -35,30 +32,23 @@ pub struct SubagentArgs {
 
 impl SubagentTool {
     #[must_use]
-    pub fn new(
-        provider: OpenAI,
-        model: impl Into<String>,
-        tooling: Tooling,
-        budget: RunBudget,
-    ) -> Self {
+    pub fn new(subagent: Agent, progress: Arc<ResearchProgress>) -> Self {
         Self {
-            provider,
-            model: model.into(),
-            tooling,
-            budget,
+            subagent: Arc::new(subagent),
+            progress,
         }
     }
+}
 
-    fn brief(args: &SubagentArgs) -> String {
-        format!(
-            "### Subagent Task Brief\n\
-             1. **Assigned Sub-Question**: {}\n\
-             2. **Target Angle**: {}\n\
-             3. **Overall Context & Scope**: {}\n\
-             4. **Exclusions**: {}",
-            args.sub_question, args.target_angle, args.context, args.exclusions
-        )
-    }
+fn brief(args: &SubagentArgs) -> String {
+    format!(
+        "### Subagent Task Brief\n\
+         1. **Assigned Sub-Question**: {}\n\
+         2. **Target Angle**: {}\n\
+         3. **Overall Context & Scope**: {}\n\
+         4. **Exclusions**: {}",
+        args.sub_question, args.target_angle, args.context, args.exclusions
+    )
 }
 
 impl Tool for SubagentTool {
@@ -103,16 +93,29 @@ impl Tool for SubagentTool {
         _context: &mut ToolContext,
         args: Self::Args,
     ) -> impl Future<Output = Result<String, AgentError>> + WasmCompatSend {
-        self.tooling
-            .progress
+        self.progress
             .delegated(Researcher::Lead, &args.sub_question);
-        let brief = Self::brief(&args);
-        let agent = BuddyAgent::subagent(
-            &self.provider,
-            self.model.clone(),
-            self.tooling.clone(),
-            self.budget,
-        );
-        async move { agent.ask(&brief).await }
+        let task_brief = brief(&args);
+        let subagent = Arc::clone(&self.subagent);
+        async move { subagent.ask(&task_brief).await }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SubagentArgs, brief};
+
+    #[test]
+    fn brief_formats_all_four_fields_in_order() {
+        let formatted = brief(&SubagentArgs {
+            sub_question: "What is Qwen3?".into(),
+            target_angle: "Angle A".into(),
+            context: "2026 release".into(),
+            exclusions: "Pricing".into(),
+        });
+        assert!(formatted.contains("1. **Assigned Sub-Question**: What is Qwen3?"));
+        assert!(formatted.contains("2. **Target Angle**: Angle A"));
+        assert!(formatted.contains("3. **Overall Context & Scope**: 2026 release"));
+        assert!(formatted.contains("4. **Exclusions**: Pricing"));
     }
 }

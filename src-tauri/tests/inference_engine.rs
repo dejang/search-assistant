@@ -4,7 +4,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use research_buddy_lib::agent::{AgentError, BuddyAgent};
+    use research_buddy_lib::agent::{Agent, AgentError};
     use research_buddy_lib::inference_engine::{
         Engine, EngineError, EngineStatus, InferenceEngine, LocalEngine, Sampling, ServerConfig,
     };
@@ -118,8 +118,7 @@ http.server.HTTPServer(("127.0.0.1", port), Handler).serve_forever()
         assert_eq!(engine.status(), EngineStatus::Online);
         assert!(engine.is_online());
 
-        let agent =
-            BuddyAgent::with_endpoint("local", engine.endpoint(), "qwen3-8b", "Answer briefly.");
+        let agent = Agent::new(engine.endpoint(), "qwen3-8b");
         let answer = agent
             .ask("Capital of France?")
             .await
@@ -137,8 +136,7 @@ http.server.HTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
         assert!(engine.is_online());
 
-        let agent =
-            BuddyAgent::with_endpoint("local", engine.endpoint(), "qwen3-8b", "Answer briefly.");
+        let agent = Agent::new(engine.endpoint(), "qwen3-8b");
         let result = agent.ask("Capital of France?").await;
 
         assert!(
@@ -169,8 +167,7 @@ http.server.HTTPServer(("127.0.0.1", port), Handler).serve_forever()
         let model = write_model(temp.path(), "ok");
         let engine = spawn_local(&config, &model).await.expect("engine to start");
 
-        let agent =
-            BuddyAgent::with_endpoint("local", engine.endpoint(), "qwen3-8b", "Answer briefly.");
+        let agent = Agent::new(engine.endpoint(), "qwen3-8b");
         let first = agent
             .ask("Capital of France?")
             .await

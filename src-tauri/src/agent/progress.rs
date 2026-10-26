@@ -4,10 +4,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+
+type Listener = dyn Fn(&Activity<'_>) + Send + Sync;
 
 /// Which agent an activity line belongs to.
-#[derive(Clone, Copy, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Researcher {
     Lead,
@@ -15,7 +16,7 @@ pub enum Researcher {
 }
 
 /// What the calling tool is doing.
-#[derive(Clone, Copy, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ResearchAction {
     Searching,
@@ -24,15 +25,15 @@ pub enum ResearchAction {
 }
 
 /// One activity line, carrying the running totals the webview shows.
-#[derive(Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Activity<'a> {
-    by: Researcher,
-    action: ResearchAction,
-    detail: &'a str,
-    searches: usize,
-    reads: usize,
-    subagents: usize,
+pub struct Activity<'a> {
+    pub by: Researcher,
+    pub action: ResearchAction,
+    pub detail: &'a str,
+    pub searches: usize,
+    pub reads: usize,
+    pub subagents: usize,
 }
 
 /// Totals for one run, counted and read out under one lock so the numbers a
@@ -46,19 +47,31 @@ struct Counts {
 
 /// Counts the work the research agents do and announces each call as it starts.
 pub struct ResearchProgress {
-    app: AppHandle,
     running: AtomicBool,
     counts: Mutex<Counts>,
+    listener: Option<Box<Listener>>,
+}
+
+impl Default for ResearchProgress {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResearchProgress {
     #[must_use]
-    pub fn new(app: AppHandle) -> Self {
+    pub fn new() -> Self {
         Self {
-            app,
             running: AtomicBool::new(false),
             counts: Mutex::new(Counts::default()),
+            listener: None,
         }
+    }
+
+    #[must_use]
+    pub fn on_activity(mut self, listener: impl Fn(&Activity<'_>) + Send + Sync + 'static) -> Self {
+        self.listener = Some(Box::new(listener));
+        self
     }
 
     /// Takes the one run slot and zeroes the totals, or `None` if a question is
@@ -110,7 +123,9 @@ impl ResearchProgress {
             reads: counts.reads,
             subagents: counts.subagents,
         };
-        let _ = self.app.emit("research://activity", &activity);
+        if let Some(listener) = &self.listener {
+            listener(&activity);
+        }
     }
 }
 
@@ -122,5 +137,69 @@ pub struct RunGuard<'a> {
 impl Drop for RunGuard<'_> {
     fn drop(&mut self) {
         self.progress.running.store(false, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::{Activity, ResearchAction, ResearchProgress, Researcher};
+
+    #[test]
+    fn begin_locks_out_a_second_run_until_the_guard_drops() {
+        let progress = ResearchProgress::new();
+        {
+            let _first = progress.begin().expect("first run acquires the slot");
+            assert!(progress.begin().is_none(), "second run must be rejected");
+        }
+        assert!(
+            progress.begin().is_some(),
+            "dropping the guard frees the slot"
+        );
+    }
+
+    #[test]
+    fn activity_counts_climb_within_a_run_and_reset_on_the_next_begin() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&seen);
+        let progress = ResearchProgress::new().on_activity(move |activity| {
+            sink.lock().expect("lock").push((
+                activity.searches,
+                activity.reads,
+                activity.subagents,
+            ));
+        });
+
+        let run1 = progress.begin().expect("run 1");
+        progress.delegated(Researcher::Lead, "angle 1");
+        progress.searched(Researcher::Subagent, "rust async");
+        progress.read(Researcher::Subagent, "https://example.com");
+        drop(run1);
+
+        let _run2 = progress.begin().expect("run 2");
+        progress.searched(Researcher::Lead, "fresh query");
+
+        let recorded = seen.lock().expect("lock").clone();
+        assert_eq!(recorded, vec![(0, 0, 1), (1, 0, 1), (1, 1, 1), (1, 0, 0)]);
+    }
+
+    #[test]
+    fn activity_serializes_as_the_webview_reads_it() {
+        let activity = Activity {
+            by: Researcher::Subagent,
+            action: ResearchAction::Searching,
+            detail: "tokio runtime",
+            searches: 2,
+            reads: 1,
+            subagents: 1,
+        };
+        let value = serde_json::to_value(activity).expect("json");
+        assert_eq!(value["by"], "subagent");
+        assert_eq!(value["action"], "searching");
+        assert_eq!(value["detail"], "tokio runtime");
+        assert_eq!(value["searches"], 2);
+        assert_eq!(value["reads"], 1);
+        assert_eq!(value["subagents"], 1);
     }
 }

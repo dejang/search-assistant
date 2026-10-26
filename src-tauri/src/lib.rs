@@ -14,69 +14,12 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
-use agent::BuddyAgent;
-use agent::RunBudget;
+use agent::Agent;
 use agent::progress::ResearchProgress;
 use agent::tools::Tooling;
 use inference_engine::{Engine, EngineStatus, InferenceEngine, get_inference_engine};
 use model_store::ModelStore;
 use url_extractor::UrlExtractor;
-
-pub(crate) fn show_main_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let was_visible = window.is_visible().unwrap_or(false);
-        let _ = window.show();
-        let _ = window.set_focus();
-        if !was_visible {
-            let _ = window.emit("window-open", ());
-        }
-    }
-}
-
-pub(crate) fn toggle_main_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        if window.is_visible().unwrap_or(false) {
-            let _ = window.hide();
-        } else {
-            show_main_window(app);
-        }
-    }
-}
-
-fn start_engine(app: &tauri::AppHandle) {
-    let handle = app.clone();
-    drop(tauri::async_runtime::spawn(async move {
-        if let Some(store) = handle.try_state::<Arc<ModelStore>>() {
-            while store.status().phase == model_store::DownloadPhase::Downloading {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
-        }
-        match get_inference_engine(&handle).await {
-            Ok(engine) => {
-                let extractor = Arc::clone(&handle.state::<Arc<UrlExtractor>>());
-                let progress = Arc::clone(&handle.state::<Arc<ResearchProgress>>());
-                let agent = BuddyAgent::with_research(
-                    engine.endpoint(),
-                    "qwen3-8b",
-                    Tooling::new(extractor, progress, 8_000),
-                    RunBudget {
-                        turns: 12,
-                        retries: 3,
-                        tools: 4,
-                    },
-                );
-                handle.manage(Arc::new(engine));
-                handle.manage(Arc::new(agent));
-                let _ = handle.emit("engine://status", EngineStatus::Online);
-            }
-            Err(err) => {
-                log::error!("Failed to initialize inference engine: {err}");
-                handle.manage(EngineStatus::Offline);
-                let _ = handle.emit("engine://status", EngineStatus::Offline);
-            }
-        }
-    }));
-}
 
 #[tauri::command]
 fn hide_window(app: tauri::AppHandle) {
@@ -125,7 +68,12 @@ pub fn run() -> Result<(), tauri::Error> {
             app.global_shortcut().register("alt+shift+space")?;
             tray_icon::mount(app.handle())?;
             app.manage(Arc::new(UrlExtractor::default()));
-            app.manage(Arc::new(ResearchProgress::new(app.handle().clone())));
+            let progress_handle = app.handle().clone();
+            app.manage(Arc::new(ResearchProgress::new().on_activity(
+                move |activity| {
+                    let _ = progress_handle.emit("research://activity", activity);
+                },
+            )));
             ModelStore::start(app.handle(), "Qwen", "Qwen3-8B-GGUF", "Q4_K_M");
             start_engine(app.handle());
             Ok(())
@@ -147,4 +95,52 @@ pub fn run() -> Result<(), tauri::Error> {
             }
         });
     Ok(())
+}
+
+pub(crate) fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let was_visible = window.is_visible().unwrap_or(false);
+        let _ = window.show();
+        let _ = window.set_focus();
+        if !was_visible {
+            let _ = window.emit("window-open", ());
+        }
+    }
+}
+
+pub(crate) fn toggle_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_visible().unwrap_or(false) {
+            let _ = window.hide();
+        } else {
+            show_main_window(app);
+        }
+    }
+}
+
+fn start_engine(app: &tauri::AppHandle) {
+    let handle = app.clone();
+    drop(tauri::async_runtime::spawn(async move {
+        if let Some(store) = handle.try_state::<Arc<ModelStore>>() {
+            while store.status().phase == model_store::DownloadPhase::Downloading {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+        match get_inference_engine(&handle).await {
+            Ok(engine) => {
+                let extractor = Arc::clone(&handle.state::<Arc<UrlExtractor>>());
+                let progress = Arc::clone(&handle.state::<Arc<ResearchProgress>>());
+                let agent = Agent::new(engine.endpoint(), "qwen3-8b")
+                    .with_tooling(Tooling::new(extractor, progress, 8_000));
+                handle.manage(Arc::new(engine));
+                handle.manage(Arc::new(agent));
+                let _ = handle.emit("engine://status", EngineStatus::Online);
+            }
+            Err(err) => {
+                log::error!("Failed to initialize inference engine: {err}");
+                handle.manage(EngineStatus::Offline);
+                let _ = handle.emit("engine://status", EngineStatus::Offline);
+            }
+        }
+    }));
 }

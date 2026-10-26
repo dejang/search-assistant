@@ -6,32 +6,21 @@ mod main_prompt;
 mod sub_agent_prompt;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use rig_agent::{Agent as RigAgent, AgentBuilder, run::PromptError};
-use rig_core::client::env::EnvError;
-use rig_core::http_client::HttpClientExt;
 use rig_core::providers::openai::{OpenAI, OpenAIConfig};
-use rig_core::wire::Secret;
 use tauri::{Emitter, Manager, State};
 use thiserror::Error;
 
 use self::main_prompt::MAIN_PROMPT;
-use self::progress::Researcher;
+use self::progress::{ResearchProgress, Researcher};
 use self::sub_agent_prompt::SUB_PROMPT;
 use self::tools::{ReadUrlTool, SearchTool, SubagentTool, Tooling};
-use crate::agent::progress::ResearchProgress;
 use crate::inference_engine::{Engine, EngineStatus, InferenceEngine};
+use crate::url_extractor::PageExtractor;
 
 #[derive(Error, Debug)]
 pub enum AgentError {
-    /// Provider configuration could not be read from the environment.
-    #[error("provider is not configured: {source}")]
-    Config {
-        #[source]
-        source: EnvError,
-    },
-
     /// The provider rejected or failed the request.
     #[error("completion failed: {source}")]
     Completion {
@@ -43,10 +32,6 @@ pub enum AgentError {
     #[error("the provider returned an empty answer")]
     Empty,
 
-    /// The provider did not answer within the caller's deadline.
-    #[error("the provider did not answer within {timeout:?}")]
-    TimedOut { timeout: Duration },
-
     /// Another question is already being answered by the one local model.
     #[error("a question is still being answered; it cannot be cancelled")]
     Busy,
@@ -54,21 +39,6 @@ pub enum AgentError {
     /// No inference engine is available to answer questions.
     #[error("no agent can be used at this point")]
     Unavailable,
-}
-
-impl AgentError {
-    /// The provider's HTTP status, when the failure came from an answered request.
-    #[must_use]
-    pub fn status(&self) -> Option<u16> {
-        match self {
-            Self::Completion { source } => source.provider_response_status().map(|s| s.as_u16()),
-            Self::Config { .. }
-            | Self::Empty
-            | Self::TimedOut { .. }
-            | Self::Busy
-            | Self::Unavailable => None,
-        }
-    }
 }
 
 /// Rendered the same way over IPC, so a `#[tauri::command]` can return
@@ -88,142 +58,94 @@ pub struct RunBudget {
     pub tools: usize,
 }
 
-fn local_provider<C: HttpClientExt + 'static>(client: C) -> OpenAI {
-    OpenAIConfig::new("local")
-        .with_base_url("http://local-engine/v1")
-        .connect(client)
-}
-
 /// A stateless question-answering agent backed by a [`rig_agent::Agent`].
-pub struct BuddyAgent {
-    inner: RigAgent,
+pub struct Agent {
+    provider: OpenAI,
     model: String,
+    prompt: String,
+    inner: RigAgent,
     budget: RunBudget,
 }
 
-impl BuddyAgent {
-    /// Build an agent from `OPENAI_API_KEY` and optional `OPENAI_BASE_URL`.
-    /// # Errors
-    /// `AgentError::Config` if `OPENAI_API_KEY` or `OPENAI_BASE_URL` is unusable.
-    pub fn new(model: impl Into<String>, preamble: impl Into<String>) -> Result<Self, AgentError> {
-        let provider = OpenAI::from_env().map_err(|source| AgentError::Config { source })?;
-        Ok(Self::build(&provider, model, preamble))
-    }
-
-    /// Build an agent for `model` and `preamble` with an explicit `api_key`.
+impl Agent {
+    /// Build an agent that sends requests to `endpoint` for `model`.
     #[must_use]
-    pub fn with_api_key(
-        api_key: impl Into<Secret>,
-        model: impl Into<String>,
-        preamble: impl Into<String>,
-    ) -> Self {
-        Self::build(&OpenAI::new(api_key), model, preamble)
-    }
-
-    /// Build an agent that sends requests to `base_url` with `api_key`.
-    #[must_use]
-    pub fn with_endpoint(
-        api_key: impl Into<Secret>,
-        base_url: impl Into<String>,
-        model: impl Into<String>,
-        preamble: impl Into<String>,
-    ) -> Self {
-        let provider = OpenAIConfig::new(api_key).with_base_url(base_url).client();
-        Self::build(&provider, model, preamble)
-    }
-
-    #[must_use]
-    pub fn with_client<C: HttpClientExt + 'static>(
-        client: C,
-        model: impl Into<String>,
-        preamble: impl Into<String>,
-    ) -> Self {
-        Self::build(&local_provider(client), model, preamble)
-    }
-
-    /// The lead researcher: `MAIN_PROMPT` as its preamble, and the three tools
-    /// it works through. `budget` bounds its own run and every subagent's.
-    #[must_use]
-    pub fn with_research(
-        endpoint: impl Into<String>,
-        model: impl Into<String>,
-        tooling: Tooling,
-        budget: RunBudget,
-    ) -> Self {
-        let model = model.into();
+    pub fn new(endpoint: impl Into<String>, model: impl Into<String>) -> Self {
         let provider = OpenAIConfig::new("local").with_base_url(endpoint).client();
-        let inner = AgentBuilder::new(provider.chat(model.clone()))
-            .preamble(MAIN_PROMPT)
-            .tool(SearchTool::new(tooling.clone(), Researcher::Lead))
-            .tool(ReadUrlTool::new(tooling.clone(), Researcher::Lead))
-            .tool(SubagentTool::new(provider, model.clone(), tooling, budget))
-            .build();
-        Self {
-            inner,
-            model,
-            budget,
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn subagent(
-        provider: &OpenAI,
-        model: impl Into<String>,
-        tooling: Tooling,
-        budget: RunBudget,
-    ) -> Self {
         let model = model.into();
+        let prompt = MAIN_PROMPT.to_string();
         let inner = AgentBuilder::new(provider.chat(model.clone()))
-            .preamble(SUB_PROMPT)
-            .tool(SearchTool::new(tooling.clone(), Researcher::Subagent))
-            .tool(ReadUrlTool::new(tooling, Researcher::Subagent))
+            .preamble(prompt.clone())
             .build();
         Self {
-            inner,
+            provider,
             model,
-            budget,
-        }
-    }
-
-    fn build(provider: &OpenAI, model: impl Into<String>, preamble: impl Into<String>) -> Self {
-        let model = model.into();
-        let inner = AgentBuilder::new(provider.chat(model.clone()))
-            .preamble(preamble)
-            .build();
-        Self {
+            prompt,
             inner,
-            model,
             budget: RunBudget {
-                turns: 1,
+                turns: 12,
                 retries: 3,
-                tools: 1,
+                tools: 4,
             },
         }
     }
 
-    /// The model this agent sends requests to.
     #[must_use]
-    pub fn model(&self) -> &str {
-        &self.model
+    pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.prompt = prompt.into();
+        self.inner = AgentBuilder::new(self.provider.chat(self.model.clone()))
+            .preamble(self.prompt.clone())
+            .build();
+        self
     }
 
-    /// Send `prompt` to the agent without a caller deadline.
+    #[must_use]
+    pub fn with_budget(mut self, budget: RunBudget) -> Self {
+        self.budget = budget;
+        self
+    }
+
+    /// Attach `SearchTool`, `ReadUrlTool`, and `SubagentTool` for a research run.
+    #[must_use]
+    pub fn with_tooling<P: PageExtractor + 'static>(mut self, tooling: Tooling<P>) -> Self {
+        let subagent = Self {
+            provider: self.provider.clone(),
+            model: self.model.clone(),
+            prompt: SUB_PROMPT.to_string(),
+            inner: AgentBuilder::new(self.provider.chat(self.model.clone()))
+                .preamble(SUB_PROMPT)
+                .build(),
+            budget: self.budget,
+        }
+        .with_retrieval(tooling.clone(), Researcher::Subagent);
+
+        let progress = Arc::clone(&tooling.progress);
+        self.inner = AgentBuilder::new(self.provider.chat(self.model.clone()))
+            .preamble(self.prompt.clone())
+            .tool(SearchTool::new(tooling.clone(), Researcher::Lead))
+            .tool(ReadUrlTool::new(tooling, Researcher::Lead))
+            .tool(SubagentTool::new(subagent, progress))
+            .build();
+        self
+    }
+
+    fn with_retrieval<P: PageExtractor + 'static>(
+        mut self,
+        tooling: Tooling<P>,
+        by: Researcher,
+    ) -> Self {
+        self.inner = AgentBuilder::new(self.provider.chat(self.model.clone()))
+            .preamble(self.prompt.clone())
+            .tool(SearchTool::new(tooling.clone(), by))
+            .tool(ReadUrlTool::new(tooling, by))
+            .build();
+        self
+    }
+
+    /// Send `prompt` to the agent.
     /// # Errors
     /// `AgentError::Completion` if the request fails, `AgentError::Empty` if no text.
     pub async fn ask(&self, prompt: &str) -> Result<String, AgentError> {
-        self.run(prompt).await
-    }
-
-    /// Send `prompt` to the agent within `timeout`.
-    /// # Errors
-    /// `AgentError::TimedOut` if `timeout` elapses; otherwise what `ask` gives.
-    pub async fn ask_within(&self, prompt: &str, timeout: Duration) -> Result<String, AgentError> {
-        tokio::time::timeout(timeout, self.run(prompt))
-            .await
-            .map_err(|_| AgentError::TimedOut { timeout })?
-    }
-
-    async fn run(&self, prompt: &str) -> Result<String, AgentError> {
         let response = self
             .inner
             .prompt(prompt)
@@ -245,7 +167,7 @@ impl BuddyAgent {
 
 #[tauri::command]
 /// # Errors
-/// Mirrors `BuddyAgent::ask`.
+/// Mirrors `Agent::ask`.
 pub async fn research_ask(
     app: tauri::AppHandle,
     progress: State<'_, Arc<ResearchProgress>>,
@@ -258,7 +180,7 @@ pub async fn research_ask(
         let _ = app.emit("engine://status", EngineStatus::Offline);
         return Err(AgentError::Unavailable);
     }
-    let Some(agent) = app.try_state::<Arc<BuddyAgent>>() else {
+    let Some(agent) = app.try_state::<Arc<Agent>>() else {
         return Err(AgentError::Unavailable);
     };
     let _run = progress.begin().ok_or(AgentError::Busy)?;
@@ -270,4 +192,24 @@ pub async fn research_ask(
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::AgentError;
+
+    #[test]
+    fn display_strings_and_ipc_serialization_are_pinned() {
+        assert_eq!(
+            AgentError::Empty.to_string(),
+            "the provider returned an empty answer"
+        );
+        assert_eq!(
+            AgentError::Busy.to_string(),
+            "a question is still being answered; it cannot be cancelled"
+        );
+        assert_eq!(
+            AgentError::Unavailable.to_string(),
+            "no agent can be used at this point"
+        );
+        let json = serde_json::to_string(&AgentError::Unavailable).expect("json");
+        assert_eq!(json, "\"no agent can be used at this point\"");
+    }
+}

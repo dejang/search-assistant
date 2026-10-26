@@ -11,21 +11,30 @@ pub use search::SearchTool;
 pub use subagent::SubagentTool;
 
 use super::progress::ResearchProgress;
-use crate::url_extractor::UrlExtractor;
+use crate::url_extractor::{ObscuraPageExtractor, UrlExtractor};
 
 /// What every retrieval tool needs: the browser, the counter, and how much of
 /// a page it may hand back.
-#[derive(Clone)]
-pub struct Tooling {
-    pub extractor: Arc<UrlExtractor>,
+pub struct Tooling<P = ObscuraPageExtractor> {
+    pub extractor: Arc<UrlExtractor<P>>,
     pub progress: Arc<ResearchProgress>,
     pub max_chars: usize,
 }
 
-impl Tooling {
+impl<P> Clone for Tooling<P> {
+    fn clone(&self) -> Self {
+        Self {
+            extractor: Arc::clone(&self.extractor),
+            progress: Arc::clone(&self.progress),
+            max_chars: self.max_chars,
+        }
+    }
+}
+
+impl<P> Tooling<P> {
     #[must_use]
     pub fn new(
-        extractor: Arc<UrlExtractor>,
+        extractor: Arc<UrlExtractor<P>>,
         progress: Arc<ResearchProgress>,
         max_chars: usize,
     ) -> Self {
@@ -52,4 +61,25 @@ fn cut(text: &str, max: usize) -> &str {
         end -= 1;
     }
     &text[..end]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cut, headed};
+
+    #[test]
+    fn headed_prepends_url_and_title_and_truncates_body() {
+        let out = headed("https://example.com", "Example", "Hello world", 5);
+        assert_eq!(out, "url: https://example.com\ntitle: Example\n\nHello");
+    }
+
+    #[test]
+    fn cut_never_splits_a_multibyte_codepoint() {
+        let text = "aé🦀b";
+        assert_eq!(cut(text, 1), "a");
+        assert_eq!(cut(text, 2), "a");
+        assert_eq!(cut(text, 3), "aé");
+        assert_eq!(cut(text, 5), "aé");
+        assert_eq!(cut(text, 7), "aé🦀");
+    }
 }

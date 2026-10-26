@@ -9,11 +9,11 @@ use serde_json::{Value, json};
 
 use super::{Tooling, headed};
 use crate::agent::progress::Researcher;
-use crate::url_extractor::ExtractorError;
+use crate::url_extractor::{ExtractorError, ObscuraPageExtractor, PageExtractor};
 
 /// Reads one page and returns it as Markdown.
-pub struct ReadUrlTool {
-    tooling: Tooling,
+pub struct ReadUrlTool<P = ObscuraPageExtractor> {
+    tooling: Tooling<P>,
     by: Researcher,
 }
 
@@ -24,14 +24,14 @@ pub struct ReadUrlArgs {
     pub url: String,
 }
 
-impl ReadUrlTool {
+impl<P> ReadUrlTool<P> {
     #[must_use]
-    pub fn new(tooling: Tooling, by: Researcher) -> Self {
+    pub fn new(tooling: Tooling<P>, by: Researcher) -> Self {
         Self { tooling, by }
     }
 }
 
-impl Tool for ReadUrlTool {
+impl<P: PageExtractor + 'static> Tool for ReadUrlTool<P> {
     const NAME: &'static str = "read_url";
     type Args = ReadUrlArgs;
     type Output = String;
