@@ -146,6 +146,7 @@ impl Agent {
     /// # Errors
     /// `AgentError::Completion` if the request fails, `AgentError::Empty` if no text.
     pub async fn ask(&self, prompt: &str) -> Result<String, AgentError> {
+        let asked = std::time::Instant::now();
         let response = self
             .inner
             .prompt(prompt)
@@ -158,6 +159,13 @@ impl Agent {
             })?;
 
         let answer = response.output();
+        log::debug!(
+            "agent: {} completion requests of {} allowed, {} bytes, {:?}",
+            response.requests(),
+            self.budget.turns,
+            answer.len(),
+            asked.elapsed()
+        );
         if answer.trim().is_empty() {
             return Err(AgentError::Empty);
         }
@@ -173,19 +181,46 @@ pub async fn research_ask(
     progress: State<'_, Arc<ResearchProgress>>,
     prompt: String,
 ) -> Result<String, AgentError> {
+    let asked = std::time::Instant::now();
+    log::info!("run: question received: {}", crate::clipped(&prompt, 160));
     let Some(engine) = app.try_state::<Arc<InferenceEngine>>() else {
+        log::warn!("run: refused, no inference engine is mounted");
         return Err(AgentError::Unavailable);
     };
     if !engine.is_online() {
+        log::warn!("run: refused, the inference engine is offline");
         let _ = app.emit("engine://status", EngineStatus::Offline);
         return Err(AgentError::Unavailable);
     }
     let Some(agent) = app.try_state::<Arc<Agent>>() else {
+        log::warn!("run: refused, no agent is mounted");
         return Err(AgentError::Unavailable);
     };
-    let _run = progress.begin().ok_or(AgentError::Busy)?;
+    let Some(_run) = progress.begin() else {
+        log::warn!(
+            "run: refused, run {} still holds the only slot",
+            progress.run_id()
+        );
+        return Err(AgentError::Busy);
+    };
+    log::info!("run {}: lead agent started", progress.run_id());
     let result = agent.ask(&prompt).await;
+    match &result {
+        Ok(answer) => log::info!(
+            "run {}: answered {} chars in {:?}",
+            progress.run_id(),
+            answer.chars().count(),
+            asked.elapsed()
+        ),
+        Err(err) => log::error!(
+            "run {}: failed after {:?}: {}",
+            progress.run_id(),
+            asked.elapsed(),
+            crate::clipped(&err.to_string(), 500)
+        ),
+    }
     if !engine.is_online() {
+        log::warn!("run {}: engine went offline", progress.run_id());
         let _ = app.emit("engine://status", EngineStatus::Offline);
     }
     result

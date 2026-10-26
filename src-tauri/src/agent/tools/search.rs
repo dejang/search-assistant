@@ -63,14 +63,35 @@ impl<P: PageExtractor + 'static> Tool for SearchTool<P> {
         let tooling = self.tooling.clone();
         let by = self.by;
         async move {
+            let run = tooling.progress.run_id();
+            let query = crate::clipped(&args.query, 120);
             tooling.progress.searched(by, &args.query);
-            let page = tooling.extractor.search(&args.query).await?;
-            Ok(headed(
-                &page.url,
-                &page.title,
-                &page.markdown,
-                tooling.max_chars,
-            ))
+            log::info!("run {run}: {by:?} search({query})");
+            let asked = std::time::Instant::now();
+            match tooling.extractor.search(&args.query).await {
+                Ok(page) => {
+                    log::info!(
+                        "run {run}: {by:?} search got {} bytes of markdown from {} in {:?}",
+                        page.markdown.len(),
+                        crate::clipped(&page.url, 160),
+                        asked.elapsed()
+                    );
+                    Ok(headed(
+                        &page.url,
+                        &page.title,
+                        &page.markdown,
+                        tooling.max_chars,
+                    ))
+                }
+                Err(err) => {
+                    log::warn!(
+                        "run {run}: {by:?} search failed after {:?}: {}",
+                        asked.elapsed(),
+                        crate::clipped(&err.to_string(), 300)
+                    );
+                    Err(err)
+                }
+            }
         }
     }
 }

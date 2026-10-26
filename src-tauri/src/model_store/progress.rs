@@ -132,6 +132,7 @@ impl ProgressHandler for ProgressReporter {
         };
         match download {
             DownloadEvent::Start { total_bytes, .. } => {
+                log::info!("model: a {total_bytes} byte transfer started");
                 self.total_bytes.fetch_max(*total_bytes, Ordering::Relaxed);
                 self.shown_percent.store(u64::MAX, Ordering::Relaxed);
             }

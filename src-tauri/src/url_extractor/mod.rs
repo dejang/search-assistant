@@ -103,8 +103,14 @@ impl<P: PageExtractor> UrlExtractor<P> {
     /// # Errors
     /// `ExtractorError` on browser, navigation, status, timeout, or conversion failure.
     pub async fn search(&self, query: &str) -> Result<ExtractedContent, ExtractorError> {
-        let mut content = self.fetch(&search_url(&self.search_base, query)).await?;
+        let url = search_url(&self.search_base, query);
+        log::debug!("extract: searching {}", crate::clipped(query, 120));
+        let mut content = self.fetch(&url).await?;
         content.markdown = unwrap_redirects(&content.markdown);
+        log::debug!(
+            "extract: search page carries {} bytes of markdown",
+            content.markdown.len()
+        );
         Ok(content)
     }
 
@@ -114,6 +120,7 @@ impl<P: PageExtractor> UrlExtractor<P> {
         &self,
         urls: &[String],
     ) -> Vec<Result<ExtractedContent, ExtractorError>> {
+        log::debug!("extract: opening {} pages at once", urls.len());
         let mut running = Vec::with_capacity(urls.len());
         for url in urls {
             let pages = Arc::clone(&self.pages);
@@ -133,6 +140,8 @@ impl<P: PageExtractor> UrlExtractor<P> {
                     .and_then(|page| page),
             );
         }
+        let read = pages.iter().filter(|page| page.is_ok()).count();
+        log::debug!("extract: {read} of {} pages came back", urls.len());
         pages
     }
 
@@ -150,18 +159,42 @@ impl<P: PageExtractor> UrlExtractor<P> {
         url: &str,
         timeout: Duration,
     ) -> Result<ExtractedContent, ExtractorError> {
+        let shown = crate::clipped(url, 160);
+        let queued = std::time::Instant::now();
+        if pages.available_permits() == 0 {
+            log::warn!("extract: no worker slot free, {shown} is queued");
+        }
         let permit = Arc::clone(pages)
             .acquire_owned()
             .await
             .map_err(|e| ExtractorError::Browser(e.to_string()))?;
+        log::debug!(
+            "extract: {shown} took a worker slot ({} free, waited {:?})",
+            pages.available_permits(),
+            queued.elapsed()
+        );
         let extractor = Arc::clone(extractor);
-        let url = url.to_string();
-        tauri::async_runtime::spawn_blocking(move || {
+        let target = url.to_string();
+        let loaded = std::time::Instant::now();
+        let outcome = tauri::async_runtime::spawn_blocking(move || {
             let _permit = permit;
-            extractor.extract(&url, timeout)
+            extractor.extract(&target, timeout)
         })
         .await
-        .map_err(|e| ExtractorError::Browser(e.to_string()))?
+        .map_err(|e| ExtractorError::Browser(e.to_string()))?;
+        match &outcome {
+            Ok(page) => log::debug!(
+                "extract: {shown} read as {} in {:?}",
+                crate::clipped(&page.url, 160),
+                loaded.elapsed()
+            ),
+            Err(err) => log::warn!(
+                "extract: {shown} failed after {:?}: {}",
+                loaded.elapsed(),
+                crate::clipped(&err.to_string(), 300)
+            ),
+        }
+        outcome
     }
 }
 

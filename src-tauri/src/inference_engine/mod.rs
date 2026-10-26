@@ -72,27 +72,34 @@ impl Engine for InferenceEngine {
 /// # Errors
 /// `EngineError::Init` if the model or server binary is missing or fails to start.
 pub async fn get_inference_engine(app_handle: &AppHandle) -> Result<InferenceEngine, EngineError> {
-    let store = app_handle
-        .try_state::<Arc<ModelStore>>()
-        .ok_or_else(|| EngineError::Init {
+    let store = app_handle.try_state::<Arc<ModelStore>>().ok_or_else(|| {
+        log::error!("engine: cannot boot, the model store is not mounted");
+        EngineError::Init {
             reason: "the model store is not available".into(),
-        })?;
+        }
+    })?;
     let model = store
         .model_files()
         .into_iter()
         .next()
-        .ok_or_else(|| EngineError::Init {
-            reason: "the model is not on disk".into(),
+        .ok_or_else(|| {
+            log::error!("engine: cannot boot, no model file is on disk yet");
+            EngineError::Init {
+                reason: "the model is not on disk".into(),
+            }
         })?;
-    let exe = std::env::current_exe().map_err(|err| EngineError::Init {
-        reason: err.to_string(),
+    let exe = std::env::current_exe().map_err(|err| {
+        log::error!("engine: cannot locate the app binary: {err}");
+        EngineError::Init {
+            reason: err.to_string(),
+        }
     })?;
     let config = ServerConfig {
         binary: exe.with_file_name("llama-server"),
         slots: 4,
         slot_context: 16_384,
         cache_mib: 2_048,
-        idle_seconds: 120,
+        idle_seconds: 600,
         sampling: Sampling {
             temperature: 0.7,
             top_p: 0.8,
@@ -105,6 +112,13 @@ pub async fn get_inference_engine(app_handle: &AppHandle) -> Result<InferenceEng
             .ok()
             .map(|dir| dir.join("llama-server.log")),
     };
+    log::info!(
+        "engine: booting llama-server for {} with {} slots and {} MiB cache, log {:?}",
+        model.display(),
+        config.slots,
+        config.cache_mib,
+        config.log
+    );
     let local = LocalEngine::spawn(&config, &model, Duration::from_secs(300)).await?;
     Ok(InferenceEngine::Local(local))
 }
@@ -117,6 +131,7 @@ pub fn engine_status(app: AppHandle) -> Option<EngineStatus> {
     } else {
         app.try_state::<EngineStatus>().map(|state| *state)
     };
+    log::debug!("engine: status asked, answered {status:?}");
     drop(app);
     status
 }

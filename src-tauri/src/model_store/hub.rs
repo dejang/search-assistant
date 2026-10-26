@@ -87,13 +87,22 @@ impl HfHub {
 impl ModelHub for HfHub {
     async fn list_files(&self, owner: &str, name: &str) -> Result<Vec<String>, ModelStoreError> {
         let client = self.client()?;
+        let repo = format!("{owner}/{name}");
+        log::debug!(
+            "hub: listing {repo} (retries {}, connect {:?}, read {:?})",
+            self.retries,
+            self.connect_timeout,
+            self.read_timeout
+        );
         let listing = client.model(owner, name).info().send().await?;
-        Ok(listing
+        let files: Vec<String> = listing
             .siblings
             .unwrap_or_default()
             .into_iter()
             .map(|sibling| sibling.rfilename)
-            .collect())
+            .collect();
+        log::debug!("hub: {repo} lists {} files", files.len());
+        Ok(files)
     }
 
     async fn download(
@@ -104,16 +113,40 @@ impl ModelHub for HfHub {
         dir: PathBuf,
         progress: Arc<dyn ProgressHandler>,
     ) -> Result<(), ModelStoreError> {
+        let repo = format!("{owner}/{name}");
+        let wanted = patterns.len();
+        log::info!(
+            "hub: downloading {wanted} files of {repo} into {}",
+            dir.display()
+        );
+        let started = std::time::Instant::now();
         let client = self.client()?;
-        client
+        let fetched = client
             .model(owner, name)
             .snapshot_download()
             .allow_patterns(patterns)
-            .local_dir(dir)
+            .local_dir(dir.clone())
             .max_workers(5)
             .progress(progress)
             .send()
-            .await?;
-        Ok(())
+            .await;
+        match fetched {
+            Ok(landed) => {
+                log::info!(
+                    "hub: {repo} landed at {} in {:?}",
+                    landed.display(),
+                    started.elapsed()
+                );
+                Ok(())
+            }
+            Err(err) => {
+                log::error!(
+                    "hub: {repo} failed after {:?}: {}",
+                    started.elapsed(),
+                    crate::clipped(&err.to_string(), 300)
+                );
+                Err(err.into())
+            }
+        }
     }
 }

@@ -65,14 +65,19 @@ impl ModelStore<HfHub> {
     /// never opens: the commands then refuse cleanly and the row stays hidden.
     pub fn start(app: &AppHandle, owner: &str, name: &str, quant: &str) {
         let Some(store) = Self::mounted(app, owner, name, quant) else {
+            log::warn!("model: no data directory, so {owner}/{name} is never fetched");
             return;
         };
         let store = Arc::new(store);
         let needed = !store.is_downloaded();
+        let state = if needed { "missing" } else { "already on disk" };
+        log::info!("model: {owner}/{name} {quant} is {state}");
         app.manage(Arc::clone(&store));
         if needed {
             drop(tauri::async_runtime::spawn(async move {
-                let _ = store.download().await;
+                if let Err(err) = store.download().await {
+                    log::error!("model: the background download gave up: {err}");
+                }
             }));
         }
     }
@@ -147,13 +152,20 @@ impl<H: ModelHub> ModelStore<H> {
     /// Anything the Hub or the disk can refuse; also published as `failed`.
     pub async fn download(&self) -> Result<(), ModelStoreError> {
         if self.downloading.swap(true, Ordering::SeqCst) {
+            log::debug!("model: a download is already running, nothing new started");
             return Ok(());
         }
         let _guard = DownloadGuard {
             downloading: &self.downloading,
         };
+        let repo = self.repo_id();
+        log::info!("model: fetching {repo} {}", self.quant);
+        let started = std::time::Instant::now();
         match self.fetch().await {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                log::info!("model: {repo} is ready in {:?}", started.elapsed());
+                Ok(())
+            }
             Err(error) => self.failed(error),
         }
     }
@@ -171,7 +183,18 @@ impl<H: ModelHub> ModelStore<H> {
 
         let listing = self.hub.list_files(&self.owner, &self.name).await?;
         let patterns = quant_files(&listing, &self.quant);
+        log::info!(
+            "model: {} files listed, {} carry {}",
+            listing.len(),
+            patterns.len(),
+            self.quant
+        );
         if patterns.is_empty() {
+            log::error!(
+                "model: {} holds no {} file",
+                self.repo_id(),
+                self.quant
+            );
             return Err(ModelStoreError::NothingToFetch {
                 repo: self.repo_id(),
                 quant: self.quant.clone(),
@@ -179,6 +202,7 @@ impl<H: ModelHub> ModelStore<H> {
         }
 
         let staging = self.dir.join(".staging");
+        log::debug!("model: fetching into {}", staging.display());
         let _ = std::fs::remove_dir_all(&staging);
         std::fs::create_dir_all(&staging)?;
 
@@ -193,7 +217,13 @@ impl<H: ModelHub> ModelStore<H> {
         }
 
         promote(&staging, &self.dir)?;
+        log::debug!("model: moved {} into {}", staging.display(), self.dir.display());
         if !self.is_downloaded() {
+            log::error!(
+                "model: {} finished but left no {} model",
+                self.repo_id(),
+                self.quant
+            );
             return Err(ModelStoreError::NotOnDisk {
                 repo: self.repo_id(),
                 quant: self.quant.clone(),
@@ -209,6 +239,7 @@ impl<H: ModelHub> ModelStore<H> {
 
     fn failed(&self, error: ModelStoreError) -> Result<(), ModelStoreError> {
         let message = error.to_string();
+        log::error!("model: {} failed: {message}", self.repo_id());
         self.sink.publish(|status| {
             status.phase = DownloadPhase::Failed;
             status.message = Some(message.clone());
@@ -234,7 +265,9 @@ pub async fn model_download(store: State<'_, Arc<ModelStore>>) -> Result<(), Mod
 #[must_use]
 #[tauri::command]
 pub fn model_download_status(store: State<'_, Arc<ModelStore>>) -> DownloadStatus {
-    store.status()
+    let status = store.status();
+    log::debug!("model: status asked, answered {:?}", status.phase);
+    status
 }
 
 #[cfg(test)]

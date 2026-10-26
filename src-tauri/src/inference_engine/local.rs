@@ -41,11 +41,13 @@ impl LocalEngine {
         load_timeout: Duration,
     ) -> Result<Self, EngineError> {
         if !config.binary.is_file() {
+            log::error!("engine: no llama-server at {}", config.binary.display());
             return Err(EngineError::Init {
                 reason: format!("no llama-server at {}", config.binary.display()),
             });
         }
         if !model.is_file() {
+            log::error!("engine: no model at {}", model.display());
             return Err(EngineError::Init {
                 reason: format!("no model at {}", model.display()),
             });
@@ -98,10 +100,17 @@ impl LocalEngine {
             .stdout(stdout)
             .stderr(stderr)
             .spawn()
-            .map_err(|err| EngineError::Init {
-                reason: err.to_string(),
+            .map_err(|err| {
+                log::error!("engine: llama-server would not start: {err}");
+                EngineError::Init {
+                    reason: err.to_string(),
+                }
             })?;
 
+        log::info!(
+            "engine: llama-server pid {} asked to listen on port {port}, ready within {load_timeout:?}",
+            child.id()
+        );
         let engine = Self {
             child: Mutex::new(child),
             endpoint: format!("http://127.0.0.1:{port}/v1"),
@@ -119,9 +128,12 @@ impl LocalEngine {
             .map_err(|err| EngineError::Init {
                 reason: err.to_string(),
             })?;
+        let started = std::time::Instant::now();
         let poll = async {
+            let mut probes = 0_u32;
             loop {
                 if !self.is_online() {
+                    log::error!("engine: llama-server exited before it was ready");
                     return Err(EngineError::Init {
                         reason: "llama-server exited before it was ready".into(),
                     });
@@ -129,15 +141,29 @@ impl LocalEngine {
                 if let Ok(response) = client.get(&health_url).send().await
                     && response.status() == reqwest::StatusCode::OK
                 {
+                    log::debug!(
+                        "engine: llama-server answered /health after {probes} probes ({:?})",
+                        started.elapsed()
+                    );
                     return Ok(());
+                }
+                probes += 1;
+                if probes.is_multiple_of(100) {
+                    log::info!(
+                        "engine: llama-server not ready after {probes} probes ({:?})",
+                        started.elapsed()
+                    );
                 }
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
         };
         tokio::time::timeout(load_timeout, poll)
             .await
-            .map_err(|_| EngineError::Init {
-                reason: format!("llama-server did not become ready within {load_timeout:?}"),
+            .map_err(|_| {
+                log::error!("engine: llama-server was not ready within {load_timeout:?}");
+                EngineError::Init {
+                    reason: format!("llama-server did not become ready within {load_timeout:?}"),
+                }
             })?
     }
 }
@@ -159,6 +185,7 @@ impl Engine for LocalEngine {
 
     fn shutdown(&self) {
         if let Ok(mut child) = self.child.lock() {
+            log::info!("engine: stopping llama-server pid {}", child.id());
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -172,7 +199,7 @@ impl Drop for LocalEngine {
 }
 
 fn log_streams(path: Option<&Path>) -> (Stdio, Stdio) {
-    path.and_then(|file| {
+    let captured = path.and_then(|file| {
         let parent = file.parent()?;
         std::fs::create_dir_all(parent).ok()?;
         let out = OpenOptions::new()
@@ -182,6 +209,9 @@ fn log_streams(path: Option<&Path>) -> (Stdio, Stdio) {
             .ok()?;
         let err = out.try_clone().ok()?;
         Some((Stdio::from(out), Stdio::from(err)))
-    })
-    .unwrap_or_else(|| (Stdio::null(), Stdio::null()))
+    });
+    if captured.is_none() && path.is_some() {
+        log::warn!("engine: llama-server output will not be captured");
+    }
+    captured.unwrap_or_else(|| (Stdio::null(), Stdio::null()))
 }

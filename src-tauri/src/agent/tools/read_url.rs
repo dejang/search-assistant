@@ -63,14 +63,35 @@ impl<P: PageExtractor + 'static> Tool for ReadUrlTool<P> {
         let tooling = self.tooling.clone();
         let by = self.by;
         async move {
+            let run = tooling.progress.run_id();
+            let url = crate::clipped(&args.url, 160);
             tooling.progress.read(by, &args.url);
-            let page = tooling.extractor.fetch(&args.url).await?;
-            Ok(headed(
-                &page.url,
-                &page.title,
-                &page.markdown,
-                tooling.max_chars,
-            ))
+            log::info!("run {run}: {by:?} read_url({url})");
+            let asked = std::time::Instant::now();
+            match tooling.extractor.fetch(&args.url).await {
+                Ok(page) => {
+                    log::info!(
+                        "run {run}: {by:?} read_url got {} bytes of markdown as {} in {:?}",
+                        page.markdown.len(),
+                        crate::clipped(&page.url, 160),
+                        asked.elapsed()
+                    );
+                    Ok(headed(
+                        &page.url,
+                        &page.title,
+                        &page.markdown,
+                        tooling.max_chars,
+                    ))
+                }
+                Err(err) => {
+                    log::warn!(
+                        "run {run}: {by:?} read_url failed after {:?}: {}",
+                        asked.elapsed(),
+                        crate::clipped(&err.to_string(), 300)
+                    );
+                    Err(err)
+                }
+            }
         }
     }
 }

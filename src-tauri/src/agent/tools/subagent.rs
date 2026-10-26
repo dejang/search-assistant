@@ -93,11 +93,29 @@ impl Tool for SubagentTool {
         _context: &mut ToolContext,
         args: Self::Args,
     ) -> impl Future<Output = Result<String, AgentError>> + WasmCompatSend {
-        self.progress
-            .delegated(Researcher::Lead, &args.sub_question);
+        let run = self.progress.run_id();
+        let sub_question = crate::clipped(&args.sub_question, 120);
+        self.progress.delegated(Researcher::Lead, &args.sub_question);
+        log::info!("run {run}: Lead delegated a subagent: {sub_question}");
         let task_brief = brief(&args);
         let subagent = Arc::clone(&self.subagent);
-        async move { subagent.ask(&task_brief).await }
+        async move {
+            let asked = std::time::Instant::now();
+            let outcome = subagent.ask(&task_brief).await;
+            match &outcome {
+                Ok(digest) => log::info!(
+                    "run {run}: subagent {sub_question} answered {} bytes in {:?}",
+                    digest.len(),
+                    asked.elapsed()
+                ),
+                Err(err) => log::warn!(
+                    "run {run}: subagent {sub_question} failed after {:?}: {}",
+                    asked.elapsed(),
+                    crate::clipped(&err.to_string(), 500)
+                ),
+            }
+            outcome
+        }
     }
 }
 

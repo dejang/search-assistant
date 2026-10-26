@@ -1,6 +1,6 @@
 //! Live progress for a research run, as the webview sees it.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
@@ -48,6 +48,7 @@ struct Counts {
 /// Counts the work the research agents do and announces each call as it starts.
 pub struct ResearchProgress {
     running: AtomicBool,
+    run: AtomicU64,
     counts: Mutex<Counts>,
     listener: Option<Box<Listener>>,
 }
@@ -63,6 +64,7 @@ impl ResearchProgress {
     pub fn new() -> Self {
         Self {
             running: AtomicBool::new(false),
+            run: AtomicU64::new(0),
             counts: Mutex::new(Counts::default()),
             listener: None,
         }
@@ -82,9 +84,17 @@ impl ResearchProgress {
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .ok()
             .map(|_| {
+                self.run.fetch_add(1, Ordering::SeqCst);
                 *self.counts() = Counts::default();
                 RunGuard { progress: self }
             })
+    }
+
+    /// The id of the run in flight, so lines the agents write while it runs can
+    /// be read back as one run. Zero before the first `begin`.
+    #[must_use]
+    pub fn run_id(&self) -> u64 {
+        self.run.load(Ordering::SeqCst)
     }
 
     /// One web search for `query`.
