@@ -21,6 +21,7 @@ pub struct ServerConfig {
     pub slots: usize,
     pub slot_context: usize,
     pub cache_mib: usize,
+    pub idle_seconds: u64,
     pub sampling: Sampling,
     pub log: Option<PathBuf>,
 }
@@ -79,6 +80,8 @@ impl LocalEngine {
                 &config.slot_context.to_string(),
                 "--cache-ram",
                 &config.cache_mib.to_string(),
+                "--sleep-idle-seconds",
+                &config.idle_seconds.to_string(),
             ])
             .args(["--gpu-layers", "all", "--reasoning", "off", "--no-webui"])
             .args([

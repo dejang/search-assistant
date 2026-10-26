@@ -16,14 +16,38 @@ import http.server
 import json
 import pathlib
 import sys
+import threading
+import time
 
 args = sys.argv[1:]
 port = int(args[args.index("--port") + 1])
+idle_seconds = (
+    int(args[args.index("--sleep-idle-seconds") + 1])
+    if "--sleep-idle-seconds" in args
+    else -1
+)
 model_path = pathlib.Path(args[args.index("--model") + 1])
 mode = model_path.read_text().strip()
 
 if mode == "exit_on_startup":
     sys.exit(1)
+
+state = {"last_active": time.monotonic(), "sleeping": False}
+lock = threading.Lock()
+
+def monitor_idle():
+    while True:
+        time.sleep(0.1)
+        with lock:
+            if (
+                idle_seconds > 0
+                and not state["sleeping"]
+                and (time.monotonic() - state["last_active"]) >= idle_seconds
+            ):
+                state["sleeping"] = True
+                print("entering sleeping state", flush=True)
+
+threading.Thread(target=monitor_idle, daemon=True).start()
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -39,6 +63,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        with lock:
+            if state["sleeping"]:
+                state["sleeping"] = False
+                print("waking from sleeping state", flush=True)
+            state["last_active"] = time.monotonic()
         length = int(self.headers.get("Content-Length", "0"))
         if length:
             self.rfile.read(length)
@@ -90,6 +119,7 @@ http.server.HTTPServer(("127.0.0.1", port), Handler).serve_forever()
             slots: 1,
             slot_context: 512,
             cache_mib: 0,
+            idle_seconds: 120,
             sampling: Sampling {
                 temperature: 0.7,
                 top_p: 0.8,
@@ -183,6 +213,40 @@ http.server.HTTPServer(("127.0.0.1", port), Handler).serve_forever()
         assert!(
             matches!(second, Err(AgentError::Completion { .. })),
             "expected call against dead engine to fail, got {second:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_sleeps_when_idle_and_wakes_on_next_inference() {
+        let temp = TempDir::new().expect("temp dir");
+        let log_path = temp.path().join("llama-server.log");
+        let mut config = config_with(write_fake_server(temp.path()));
+        config.idle_seconds = 1;
+        config.log = Some(log_path.clone());
+        let model = write_model(temp.path(), "ok");
+        let engine = spawn_local(&config, &model).await.expect("engine to start");
+
+        let agent = Agent::new(engine.endpoint(), "qwen3-8b");
+        let first = agent.ask("Capital of France?").await.expect("first turn");
+        assert_eq!(first, "Paris");
+
+        tokio::time::sleep(Duration::from_millis(1300)).await;
+        assert!(engine.is_online(), "sleeping engine stays online");
+        let log_after_idle = std::fs::read_to_string(&log_path).expect("read server log");
+        assert!(
+            log_after_idle.contains("entering sleeping state"),
+            "expected server to enter sleeping state after idle_seconds, got {log_after_idle:?}"
+        );
+
+        let second = agent
+            .ask("Capital of France?")
+            .await
+            .expect("wake up on next turn");
+        assert_eq!(second, "Paris");
+        let log_after_wake = std::fs::read_to_string(&log_path).expect("read server log");
+        assert!(
+            log_after_wake.contains("waking from sleeping state"),
+            "expected server to wake on next turn, got {log_after_wake:?}"
         );
     }
 }

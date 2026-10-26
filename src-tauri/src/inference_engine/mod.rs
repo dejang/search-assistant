@@ -92,6 +92,7 @@ pub async fn get_inference_engine(app_handle: &AppHandle) -> Result<InferenceEng
         slots: 4,
         slot_context: 16_384,
         cache_mib: 2_048,
+        idle_seconds: 120,
         sampling: Sampling {
             temperature: 0.7,
             top_p: 0.8,
